@@ -205,6 +205,98 @@
     return toCsv(rows);
   }
 
+  // ---------------------------------------------------------------- live intelligence
+  // Pace = ms per cup, measured from what the bar actually finished in the last 45 min.
+  function pace(state, nowTs) {
+    const day = sgDay(nowTs);
+    const done = Object.values(state.orders).filter((o) => o.day === day && o.times && o.times.ready && o.times.ready > nowTs - 45 * 60000)
+      .sort((a, b) => a.times.ready - b.times.ready);
+    let perCup = 90000; // sensible default: 1.5 min per cup on one machine
+    if (done.length >= 3) {
+      const cups = done.slice(1).reduce((s, o) => s + orderCups(o), 0);
+      const span = done[done.length - 1].times.ready - done[0].times.ready;
+      if (span > 60000 && cups) perCup = Math.min(300000, Math.max(25000, span / cups));
+    }
+    return perCup;
+  }
+  const OPEN = (o) => o.status === 'queued' || o.status === 'making';
+  // Estimated ms until this order is ready.
+  function eta(state, o, nowTs) {
+    if (!OPEN(o)) return 0;
+    const perCup = pace(state, nowTs);
+    const ahead = Object.values(state.orders).filter((x) => OPEN(x) && x.createdAt < o.createdAt);
+    let ms = (ahead.reduce((s, x) => s + orderCups(x), 0) + orderCups(o)) * perCup;
+    // Work already in progress on the bar is partly done.
+    for (const x of ahead.concat([o])) if (x.status === 'making') ms -= Math.min(perCup * orderCups(x) * 0.8, nowTs - x.statusAt);
+    return Math.max(30000, ms);
+  }
+  // Charity impact: every dollar goes to Singapore Red Cross Young Hearts.
+  function impact(state, nowTs) {
+    const day = sgDay(nowTs);
+    let cups = 0, total = 0, cupsToday = 0, totalToday = 0;
+    for (const o of Object.values(state.orders)) {
+      if (o.status === 'cancelled') continue;
+      const c = orderCups(o), t = orderTotal(o);
+      cups += c; total += t;
+      if (o.day === day) { cupsToday += c; totalToday += t; }
+    }
+    return { cups, total, cupsToday, totalToday, goal: state.settings.goal || 500000 };
+  }
+  const STOCK = [
+    { key: 'oat', label: 'Oat milk', uses: (it) => !!(it.milkName && it.milkName !== 'Milk') },
+    { key: 'milk', label: 'Fresh milk', uses: (it) => it.milkName === 'Milk' },
+    { key: 'beans', label: 'Coffee beans', uses: () => true },
+    { key: 'cups', label: 'Iced cups', uses: (it) => it.temp === 'iced' },
+  ];
+  function stockLevels(state, nowTs) {
+    const stock = state.settings.stock || {};
+    const all = Object.values(state.orders).filter((o) => o.status !== 'cancelled');
+    return STOCK.filter((k) => stock[k.key] && stock[k.key].left != null).map((k) => {
+      const s = stock[k.key];
+      let used = 0, recent = 0;
+      for (const o of all) {
+        if (o.createdAt < s.at) continue;
+        const n = o.items.reduce((a, it) => a + (k.uses(it) ? it.qty : 0), 0);
+        used += n; if (o.createdAt > nowTs - 30 * 60000) recent += n;
+      }
+      const left = Math.max(0, s.left - used);
+      const perMin = recent / 30;
+      const mins = perMin > 0 ? left / perMin : null;
+      return { key: k.key, label: k.label, start: s.left, left, perMin, outAt: mins == null ? null : nowTs + mins * 60000, mins };
+    });
+  }
+  // Plain-language advice for the booth lead, most urgent first.
+  function insights(state, nowTs) {
+    const out = [];
+    const open = Object.values(state.orders).filter(OPEN);
+    const perCup = pace(state, nowTs);
+    const openCups = open.reduce((s, o) => s + orderCups(o), 0);
+    const waitMin = Math.round(openCups * perCup / 60000);
+    const win = nowTs - 15 * 60000;
+    const day = sgDay(nowTs);
+    const todays = Object.values(state.orders).filter((o) => o.day === day && o.status !== 'cancelled');
+    const cin = todays.filter((o) => o.createdAt > win).reduce((s, o) => s + orderCups(o), 0);
+    const cout = todays.filter((o) => o.times && o.times.ready > win).reduce((s, o) => s + orderCups(o), 0);
+    if (waitMin >= 12) out.push({ level: 'warn', icon: 'hourglass-high', text: 'Wait is about ' + waitMin + ' min (' + openCups + ' cups open). Put a second barista on the bar or pause big orders.' });
+    else if (cin >= 4 && cin > cout * 1.4) out.push({ level: 'amber', icon: 'trend-up', text: 'Rush building: ' + cin + ' cups in vs ' + cout + ' out in the last 15 min. Wait will grow past ' + Math.max(waitMin + 3, 6) + ' min.' });
+    const stale = Object.values(state.orders).filter((o) => o.status === 'ready' && nowTs - o.statusAt > 5 * 60000);
+    if (stale.length) out.push({ level: 'amber', icon: 'megaphone', text: stale.length + ' drink' + (stale.length > 1 ? 's' : '') + ' waiting over 5 min at pickup: call out ' + stale.slice(0, 4).map((o) => fmtNo(o.no) + (o.name ? ' ' + o.name : '')).join(', ') + '.' });
+    for (const s of stockLevels(state, nowTs)) {
+      if (s.left <= 0) out.push({ level: 'warn', icon: 'warning', text: s.label + ' should be out by now (' + s.start + ' cups’ worth used). Mark it sold out or restock.' });
+      else if (s.mins != null && s.mins < 120) out.push({ level: s.mins < 45 ? 'warn' : 'amber', icon: 'drop-half-bottom', text: s.label + ' runs out around ' + sgTime(s.outAt) + ' at this pace (about ' + s.left + ' cups left).' });
+      else if (s.left / s.start < 0.2) out.push({ level: 'amber', icon: 'drop-half-bottom', text: s.label + ' is low: about ' + s.left + ' cups left.' });
+    }
+    const hour = todays.filter((o) => o.createdAt > nowTs - 60 * 60000);
+    if (hour.length >= 5) {
+      const by = {}; let n = 0;
+      for (const o of hour) for (const it of o.items) { const k = (it.temp === 'iced' ? 'iced ' : '') + (it.milkName && it.milkName !== 'Milk' ? it.milkName.toLowerCase() + ' ' : '') + it.name.toLowerCase(); by[k] = (by[k] || 0) + it.qty; n += it.qty; }
+      const top = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
+      if (top && top[1] / n >= 0.3) out.push({ level: 'info', icon: 'fire', text: 'Hot seller: ' + top[0] + ' is ' + Math.round(100 * top[1] / n) + '% of cups this hour. Pre-chill or batch accordingly.' });
+    }
+    if (!out.length) out.push({ level: 'ok', icon: 'check-circle', text: open.length ? 'Flowing nicely: about ' + Math.max(1, waitMin) + ' min wait, ' + (perCup / 60000).toFixed(1) + ' min per cup on the bar.' : 'All clear. Bar is idle and every drink has been collected.' });
+    return out;
+  }
+
   return { TZ, STATUSES, ROLE_OPS, sgDay, sgTime, fmtNo, money, emptyState, apply, report, reportCsv, daysCsv,
-    orderTotal, orderCups, describeItems };
+    orderTotal, orderCups, describeItems, pace, eta, impact, stockLevels, insights };
 });

@@ -199,7 +199,10 @@ function publicOrder(o) {
   const ahead = o.status === 'queued' || o.status === 'making'
     ? Object.values(state.orders).filter((x) => (x.status === 'queued' || x.status === 'making') && x.createdAt < o.createdAt).length
     : 0;
-  return { no: Core.fmtNo(o.no), name: o.name, items: Core.describeItems(o), status: o.status, times: o.times, ahead };
+  const t = Date.now();
+  const imp = Core.impact(state, t);
+  return { no: Core.fmtNo(o.no), name: o.name, items: Core.describeItems(o), cups: Core.orderCups(o), status: o.status, times: o.times, ahead,
+    etaMs: Core.eta(state, o, t), impact: { cups: imp.cups, total: imp.total, goal: imp.goal }, now: t };
 }
 // Ops the server is willing to accept from a client of a given role.
 function validOp(op, role) {
@@ -310,6 +313,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/vendor/jsqr.js') return serveFile(res, require.resolve('jsqr/dist/jsQR.js'), 'public, max-age=86400');
     if (p === '/m') return serveFile(res, path.join(PUBLIC_DIR, 'menu.html'));
+    if (p === '/demo') return serveFile(res, path.join(PUBLIC_DIR, 'demo.html'));
     if (p.startsWith('/o/')) return serveFile(res, path.join(PUBLIC_DIR, 'guest.html'));
     if (p === '/' || p === '/board' || p === '/queue' || p === '/order' || p === '/menu' || p === '/report' || p === '/display') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'));
     const file = path.normalize(path.join(PUBLIC_DIR, p));

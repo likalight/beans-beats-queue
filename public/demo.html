@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e0c0c">
+<title>Live cockpit · beans&amp;beats</title>
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/vendor/ph/bold/style.css">
+<style>
+  @font-face { font-family: "Alte Haas Grotesk"; src: url("/brand/AlteHaasGroteskRegular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Alte Haas Grotesk"; src: url("/brand/AlteHaasGroteskBold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+  @font-face { font-family: "Archivo"; src: url("/vendor/fonts/archivo.woff2") format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+  :root { --ink:#1d1b1b; --bg:#0e0c0c; --panel:#171413; --line:#2a2523; --mute:#8f8a86; --go:#fa6105; --go-l:#ff8a3d; --warn:#ff6b5e;
+    font-family:"Alte Haas Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif; color:#f4efea; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); }
+  body { display:grid; grid-template-rows:auto 1fr; min-height:100dvh; }
+  button { font:inherit; color:inherit; border:0; cursor:pointer; background:none; }
+  .num { font-family:"Archivo",sans-serif; font-variant-numeric:tabular-nums; }
+  header { display:flex; align-items:center; gap:18px; padding:14px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header img { height:44px; }
+  header h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.01em; }
+  header h1 small { display:block; font-size:13px; color:var(--mute); font-weight:400; margin-top:2px; }
+  .ctl { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+  .ctl button, .ctl a { display:inline-flex; align-items:center; gap:8px; padding:11px 16px; border-radius:99px; background:#211d1c; font-weight:700; font-size:14px; color:#f4efea; text-decoration:none; transition:transform .15s, background .2s; }
+  .ctl button:active { transform:scale(.96); }
+  .ctl .hot { background:var(--go); color:#fff; }
+  .ctl button.on { background:#fff; color:var(--ink); }
+  .ctl button.danger.on { background:var(--warn); color:#fff; }
+  main { display:grid; grid-template-columns: 1fr 1fr minmax(240px, .44fr); grid-template-rows: 1fr 1fr; gap:14px; padding:14px; min-height:0; }
+  .dev { background:var(--panel); border-radius:18px; box-shadow: inset 0 0 0 1px var(--line); display:grid; grid-template-rows:auto 1fr; min-height:0; overflow:hidden; position:relative; }
+  .dev .lbl { display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:13px; font-weight:700; color:#d6cfc9; }
+  .dev .lbl small { color:var(--mute); font-weight:400; margin-left:auto; }
+  .dev .lbl .badge { padding:3px 9px; border-radius:99px; background:#2a2523; font-size:11px; color:#bdb6b0; }
+  .dev .lbl .badge.off { background:var(--warn); color:#fff; }
+  .scr { position:relative; overflow:hidden; margin:0 10px 10px; border-radius:10px; background:#000; min-height:0; }
+  .scr iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; background:#fff; }
+  #dPhone { grid-column:3; grid-row:1 / span 2; }
+  #dPhone .scr { background:transparent; display:grid; place-items:center; }
+  .phone { position:relative; border-radius:44px; padding:12px; background:#2a2523; box-shadow: 0 30px 80px -30px rgba(250,97,5,.45), inset 0 0 0 2px #3a3431; }
+  .phone .glass { position:relative; overflow:hidden; border-radius:32px; background:#fbfbfa; }
+  .phone .glass iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; }
+  .phone .empty { position:absolute; inset:0; display:grid; place-content:center; text-align:center; padding:24px; color:#66615d; gap:10px; font-size:15px; line-height:1.4; }
+  .phone .empty i { font-size:40px; color:var(--go); }
+  #dLog { grid-column:2; grid-row:2; }
+  .log { margin:0 10px 10px; overflow:auto; font-size:13px; display:grid; align-content:start; gap:4px; min-height:0; }
+  .log div { display:grid; grid-template-columns: 64px 92px 1fr; gap:8px; padding:7px 10px; border-radius:8px; background:#1e1a19; animation:in .35s ease; }
+  .log div.burst { background:rgba(250,97,5,.16); }
+  .log time { color:var(--mute); }
+  .log b { color:var(--go-l); font-weight:700; }
+  .log .sys { grid-template-columns: 64px 1fr; color:#d6cfc9; }
+  @keyframes in { from { opacity:0; transform:translateY(-4px); } }
+  .gate { position:fixed; inset:0; background:rgba(14,12,12,.96); display:grid; place-content:center; justify-items:center; gap:16px; z-index:10; text-align:center; padding:20px; }
+  .gate img { height:120px; }
+  .gate h2 { margin:0; font-size:34px; }
+  .gate p { margin:0; color:#bdb6b0; max-width:52ch; line-height:1.5; }
+  .gate form { display:flex; gap:10px; }
+  .gate input { font:inherit; font-size:22px; padding:12px 16px; width:170px; border-radius:12px; border:0; text-align:center; letter-spacing:.3em; }
+  .gate .go { background:var(--go); color:#fff; padding:14px 24px; border-radius:99px; font-weight:700; font-size:17px; display:inline-flex; gap:8px; align-items:center; }
+  .gate .err { color:var(--warn); min-height:1.2em; }
+  .gate ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; color:#bdb6b0; text-align:left; }
+  .gate li i { color:var(--go); margin-right:6px; }
+  @media (max-width: 1100px) { main { grid-template-columns:1fr; grid-template-rows:none; grid-auto-rows: 60vh; } #dPhone, #dLog { grid-column:auto; grid-row:auto; } #dPhone { height: 760px; } }
+</style>
+</head>
+<body>
+<header>
+  <img src="/brand/logo-white.png" alt="beans&amp;beats">
+  <h1>Live booth cockpit<small>The real app, four screens, one page. Everything you see is synced live through the server.</small></h1>
+  <div class="ctl">
+    <button class="hot" id="rush"><i class="ph-bold ph-lightning"></i>Rush hour · 12 guests</button>
+    <button id="pilot"><i class="ph-bold ph-robot"></i>Barista autopilot</button>
+    <button class="danger" id="wifi"><i class="ph-bold ph-wifi-slash"></i>Kill wifi on order tablet</button>
+    <a href="/board" target="_blank" rel="noopener"><i class="ph-bold ph-arrow-square-out"></i>Board full screen</a>
+  </div>
+</header>
+<main>
+  <section class="dev" id="dOrder"><div class="lbl"><i class="ph-bold ph-device-tablet"></i>Order tablet · counter <span class="badge" id="bOrder">online</span><small>tap drinks, take payment on POS</small></div><div class="scr" data-w="1280" data-h="800"><iframe id="fOrder" title="Order tablet" allow="camera; autoplay"></iframe></div></section>
+  <section class="dev" id="dBoard"><div class="lbl"><i class="ph-bold ph-television-simple"></i>Ready board · TV at the booth<small>chimes, calls out, moves with the music</small></div><div class="scr" data-w="1920" data-h="1080"><iframe id="fBoard" title="Ready board" allow="autoplay; microphone; fullscreen"></iframe></div></section>
+  <section class="dev" id="dQueue"><div class="lbl"><i class="ph-bold ph-coffee"></i>Barista queue · bar<small>one tap per step</small></div><div class="scr" data-w="1280" data-h="800"><iframe id="fQueue" title="Barista queue" allow="camera; autoplay"></iframe></div></section>
+  <section class="dev" id="dLog"><div class="lbl"><i class="ph-bold ph-broadcast"></i>Sync feed · what the server sees<small id="logStat">connecting…</small></div><div class="log" id="log"></div></section>
+  <section class="dev" id="dPhone"><div class="lbl"><i class="ph-bold ph-device-mobile"></i>Guest phone<small id="phoneNo">no app, just a QR</small></div>
+    <div class="scr"><div class="phone" id="phone"><div class="glass" id="glass"><div class="empty" id="phoneEmpty"><i class="ph-bold ph-qr-code"></i><b>Place an order on the tablet</b>The guest scans the QR and lands here: a live page that chimes when the drink is ready.</div><iframe id="fPhone" title="Guest phone" hidden allow="autoplay"></iframe></div></div></div></section>
+</main>
+
+<div class="gate" id="gate">
+  <img src="/brand/logo-white.png" alt="">
+  <h2>The whole booth on one screen</h2>
+  <p>This cockpit runs four live copies of the real app: order tablet, barista queue, ready board and a guest's phone. Click <b>Rush hour</b> to send in a crowd, <b>Kill wifi</b> to watch the order tablet keep working offline and catch up when the wifi comes back.</p>
+  <ul><li><i class="ph-bold ph-check"></i>Same code that runs at the booth, nothing mocked</li><li><i class="ph-bold ph-check"></i>Turn your sound on for chimes and voice call-outs</li></ul>
+  <form id="pinForm" hidden><input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" aria-label="Booth PIN" autocomplete="off"><button class="go" type="submit"><i class="ph-bold ph-arrow-right"></i>Log in</button></form>
+  <button class="go" id="startBtn" hidden><i class="ph-bold ph-play"></i>Start the live demo</button>
+  <div class="err" id="gateErr"></div>
+  <p style="font-size:13px;color:#77706b" id="gateHint">Demo PINs: barista 1111 · booth lead 9999</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const tokenOf = () => { try { return JSON.parse(localStorage.getItem('bb.token')); } catch (e) { return null; } };
+  const ORIGIN = location.origin;
+  let names = {}; // order id -> "042 Mei"
+
+  function fit() {
+    document.querySelectorAll('.scr[data-w]').forEach((s) => {
+      const w = +s.dataset.w, h = +s.dataset.h, f = s.querySelector('iframe');
+      const k = Math.min(s.clientWidth / w, s.clientHeight / h);
+      f.style.width = w + 'px'; f.style.height = h + 'px';
+      f.style.transform = 'translate(' + ((s.clientWidth - w * k) / 2) + 'px,' + ((s.clientHeight - h * k) / 2) + 'px) scale(' + k + ')';
+    });
+    const ps = $('dPhone').querySelector('.scr'), PW = 390, PH = 844;
+    const k = Math.min((ps.clientWidth - 30) / (PW + 24), (ps.clientHeight - 20) / (PH + 24));
+    $('glass').style.width = PW * k + 'px'; $('glass').style.height = PH * k + 'px';
+    const f = $('fPhone'); f.style.width = PW + 'px'; f.style.height = PH + 'px'; f.style.transform = 'scale(' + k + ')';
+  }
+  window.addEventListener('resize', fit);
+
+  function log(html, cls) {
+    const d = document.createElement('div'); if (cls) d.className = cls;
+    d.innerHTML = html; const L = $('log'); L.prepend(d);
+    while (L.children.length > 60) L.lastChild.remove();
+  }
+  const hhmm = (t) => new Date(t).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Singapore' });
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function describe(op) {
+    const p = op.payload || {};
+    if (op.type === 'order.create') { names[p.id] = String(p.no).padStart(3, '0') + ' ' + (p.name || ''); return ['new order', '<b>' + esc(names[p.id]) + '</b> · ' + p.items.map((i) => (i.temp === 'iced' ? 'iced ' : '') + i.name.toLowerCase()).join(', ') + ' · ' + (p.pay === 'card' ? 'card' : 'PayNow')]; }
+    if (op.type === 'order.status') return [p.status, '<b>' + esc(names[p.id] || '…') + '</b> → ' + p.status];
+    return [op.type, ''];
+  }
+  async function seed(token) {
+    try {
+      const st = await (await fetch('/api/state', { headers: { Authorization: 'Bearer ' + token } })).json();
+      for (const o of Object.values(st.state.orders)) names[o.id] = String(o.no).padStart(3, '0') + ' ' + (o.name || '');
+    } catch (e) { /* fine */ }
+    const es = new EventSource('/api/stream?auth=' + encodeURIComponent(token));
+    es.addEventListener('hello', () => { $('logStat').textContent = 'live · server-sent events'; });
+    es.addEventListener('ops', (ev) => {
+      const ops = JSON.parse(ev.data);
+      const late = ops.filter((o) => Date.now() - o.at > 4000);
+      if (late.length > 1) log('<time>' + hhmm(Date.now()) + '</time><span><b>' + late.length + ' ops</b> arrived together: an offline tablet just caught up. Order numbers and statuses merged with no clashes.</span>', 'sys burst');
+      for (const op of ops) { const [k, v] = describe(op); log('<time class="num">' + hhmm(op.at) + '</time><span>' + esc(k) + (Date.now() - op.at > 4000 ? ' · late' : '') + '</span><span>' + v + '</span>', Date.now() - op.at > 4000 ? 'burst' : ''); }
+    });
+    es.onerror = () => { $('logStat').textContent = 'reconnecting…'; };
+  }
+
+  function boot() {
+    const token = tokenOf();
+    if (!token) { $('pinForm').hidden = false; $('pin').focus(); return; }
+    $('pinForm').hidden = true; $('startBtn').hidden = false; $('gateHint').hidden = true;
+  }
+  $('pinForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: $('pin').value }) });
+      const d = await res.json();
+      if (!res.ok) { $('gateErr').textContent = d.error || 'Wrong PIN'; return; }
+      localStorage.setItem('bb.token', JSON.stringify(d.token)); localStorage.setItem('bb.role', JSON.stringify(d.role));
+      boot();
+    } catch (err) { $('gateErr').textContent = 'No connection'; }
+  });
+  $('startBtn').addEventListener('click', () => {
+    $('gate').hidden = true;
+    // Each frame keeps its own device storage (?frame=), like separate tablets.
+    $('fOrder').src = '/order?frame=order';
+    $('fQueue').src = '/queue?frame=queue';
+    $('fBoard').src = '/board?frame=board';
+    $('fBoard').addEventListener('load', () => setTimeout(() => post('fBoard', { bb: 'stage' }), 400), { once: true });
+    fit(); seed(tokenOf());
+    log('<time>' + hhmm(Date.now()) + '</time><span>Cockpit started. Place an order on the tablet, or hit Rush hour.</span>', 'sys');
+  });
+
+  function post(id, msg) { try { $(id).contentWindow.postMessage(msg, ORIGIN); } catch (e) { /* not loaded */ } }
+  let guestSet = false, rushOn = false;
+  window.addEventListener('message', (e) => {
+    if (e.origin !== ORIGIN || !e.data || e.data.bb !== 'order') return;
+    if (e.data.manual || !guestSet) {
+      guestSet = true;
+      $('phoneEmpty').hidden = true; $('fPhone').hidden = false; $('fPhone').src = e.data.url;
+      $('phoneNo').textContent = 'following order ' + e.data.no;
+    }
+  });
+  $('rush').addEventListener('click', () => {
+    guestSet = false; post('fOrder', { bb: 'rush', n: 12 });
+    if (!$('pilot').classList.contains('on')) $('pilot').click();
+    log('<time>' + hhmm(Date.now()) + '</time><span>Rush hour: 12 guests arriving at the counter.</span>', 'sys');
+  });
+  $('pilot').addEventListener('click', (e) => {
+    const on = e.currentTarget.classList.toggle('on');
+    post('fQueue', { bb: 'autopilot', on });
+    log('<time>' + hhmm(Date.now()) + '</time><span>Barista autopilot ' + (on ? 'on: drinks move through Making and Ready on their own.' : 'off.') + '</span>', 'sys');
+  });
+  $('wifi').addEventListener('click', (e) => {
+    const off = e.currentTarget.classList.toggle('on');
+    post('fOrder', { bb: 'wifi', off });
+    $('bOrder').textContent = off ? 'wifi down' : 'online'; $('bOrder').classList.toggle('off', off);
+    e.currentTarget.innerHTML = '<i class="ph-bold ph-wifi-' + (off ? 'high' : 'slash') + '"></i>' + (off ? 'Restore wifi' : 'Kill wifi on order tablet');
+    log('<time>' + hhmm(Date.now()) + '</time><span>' + (off ? 'Order tablet lost wifi. It keeps taking orders and saves them on the device.' : 'Wifi back. Watch the saved orders sync in.') + '</span>', 'sys');
+  });
+  boot(); fit();
+})();
+</script>
+</body>
+</html>

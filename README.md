@@ -1,31 +1,56 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Beans&Beats Queue: keep the queue moving" width="100%">
+<img src="docs/banner.svg" alt="beans&beats queue: keep the queue on the beat" width="100%">
 
 <br>
 
-**Offline-first order & pickup system for the Beans&Beats charity coffee booth at Christmas Together 2026.**<br>
-Guests know the moment their drink is ready. No app to download, no paper receipts.
+**The offline-first order & pickup system for the beans&beats coffee-clubbing booth at Christmas Together 2026.**<br>
+A ready board that moves with the DJ and calls orders out loud, a phone page that fills a cup as your drink is made,<br>and a live cockpit that shows the whole booth on one screen. No app to download, no paper receipts.
 
 <br>
 
-[![Live demo](https://img.shields.io/badge/live_demo-online-0f7b4f?style=for-the-badge&logo=render&logoColor=white)](https://beans-beats-queue.onrender.com)
+[![Live demo](https://img.shields.io/badge/live_demo-online-fa6105?style=for-the-badge&logo=render&logoColor=white)](https://beans-beats-queue.onrender.com)
 [![Demo video](https://img.shields.io/badge/demo_video-3_min-111111?style=for-the-badge&logo=youtube&logoColor=white)](https://REPLACE-WITH-VIDEO-LINK)
 [![Technical summary](https://img.shields.io/badge/tech_summary-PDF-111111?style=for-the-badge&logo=adobeacrobatreader&logoColor=white)](docs/technical-summary.pdf)
 
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 [![PWA](https://img.shields.io/badge/PWA-offline--first-5A0FC8?logo=pwa&logoColor=white)](public/sw.js)
-[![Web Push](https://img.shields.io/badge/alerts-Web_Push-0f7b4f)](public/sw.js)
+[![Web Push](https://img.shields.io/badge/alerts-Web_Push-fa6105)](public/sw.js)
 [![PDPA](https://img.shields.io/badge/PDPA-first_name_only-111111)](#-personal-data--pdpa)
 [![Deps](https://img.shields.io/badge/runtime_deps-1-111111)](package.json)
-[![Tests](https://img.shields.io/badge/tests-passing-0f7b4f)](test/smoke.js)
+[![Tests](https://img.shields.io/badge/tests-passing-fa6105)](test/smoke.js)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111111)](LICENSE)
 
-[**Live app**](https://beans-beats-queue.onrender.com) &nbsp;·&nbsp; [Demo video](https://REPLACE-WITH-VIDEO-LINK) &nbsp;·&nbsp; [Technical summary (PDF)](docs/technical-summary.pdf) &nbsp;·&nbsp; [Demo script](docs/demo-script.md)
+[**Live cockpit**](https://beans-beats-queue.onrender.com/demo) &nbsp;·&nbsp; [Live app](https://beans-beats-queue.onrender.com) &nbsp;·&nbsp; [Demo video](https://REPLACE-WITH-VIDEO-LINK) &nbsp;·&nbsp; [Technical summary (PDF)](docs/technical-summary.pdf) &nbsp;·&nbsp; [Demo script](docs/demo-script.md)
+
+<br>
+
+<a href="https://beans-beats-queue.onrender.com/demo"><img src="docs/screenshots/cockpit.png" alt="Live booth cockpit: order tablet, ready board, barista queue, sync feed and guest phone on one screen" width="100%"></a>
+
+<sub><b>The live cockpit</b> (<code>/demo</code>): four real copies of the app side by side. Hit <b>Rush hour</b>, kill the order tablet's wifi, and watch everything sync.</sub>
 
 </div>
 
 ---
+
+## ✦ The wow, in 60 seconds
+
+| | What | Why it matters at the booth |
+|---|---|---|
+| 🎛️ | **Live cockpit** at [`/demo`](https://beans-beats-queue.onrender.com/demo) | Order tablet, barista queue, ready board, a guest's phone and a live sync feed on one page. **Rush hour** sends in 12 guests, **Barista autopilot** works the bar, **Kill wifi** proves offline sync. Judges see the whole system in 30 seconds. |
+| 🔊 | **Ready board on the beat** | The TV board listens to the DJ through the laptop mic and pulses, glows and snows on the beat (a built-in 120 BPM groove without a mic). It's coffee clubbing, on screen. |
+| 🗣️ | **Voice call-outs** | A fresh order takes over the screen in beans&beats orange and the board says it out loud: *"Order forty-two, Mei. Your iced oat flat white is ready."* On-device speech, works offline. |
+| ☕ | **Cup that fills as it's made** | The guest's phone shows an animated cup (steam if hot, ice if iced) filling from received to making to ready, with a **live ETA** from the bar's real pace. Confetti, chime and vibration when it's ready. |
+| 🧡 | **Charity meter + milestones** | Dollars raised for Red Cross Young Hearts on the board and every guest phone, with confetti and a spoken thank-you at every 50 cups. |
+| 📸 | **Shareable story card** | One tap makes a 1080×1920 *"I sipped for Young Hearts"* card on the phone, ready for Instagram: free reach for beans&beats and the cause. |
+| 🧠 | **Booth insights** | Plain-language warnings for the lead: *"Oat milk runs out around 3:40 pm at this pace"*, *"Rush building: 25 cups in vs 5 out"*, *"2 drinks waiting over 5 min: call out 012, 015"*. |
+
+<table>
+<tr>
+<td width="60%"><img src="docs/screenshots/board.png" alt="Ready board"><br><b>Ready board.</b> Snow and an equaliser that move with the music, a charity meter and a now-serving ticker.</td>
+<td width="40%"><img src="docs/screenshots/board-takeover.png" alt="Ready takeover"><br><b>Ready takeover.</b> The new number fills the screen and is called out by voice.</td>
+</tr>
+</table>
 
 ## Try it
 
@@ -34,6 +59,7 @@ Guests know the moment their drink is ready. No app to download, no paper receip
 | **Barista** | `1111` | Order screen, barista queue, ready board, guest display, scan-to-collect |
 | **Booth lead** | `9999` | Everything above, plus menu controls and the daily sales report |
 | **Guest** | none | Scan the QR shown after ordering, or open [`/m`](https://beans-beats-queue.onrender.com/m) for the menu |
+| **Judge** | `9999` | Open [**`/demo`**](https://beans-beats-queue.onrender.com/demo), log in once, press **Start**, then **Rush hour**. Turn sound on. |
 
 > [!NOTE]
 > The demo runs on Render's free tier: the first load after a quiet spell can take ~50 s while it wakes up, and demo data resets when the instance restarts. The live event runs on a paid instance with a persistent disk (see [Deployment](#-deployment)).
@@ -66,7 +92,7 @@ sequenceDiagram
 <td width="50%"><img src="docs/screenshots/queue.png" alt="Barista queue"><br><b>Barista queue.</b> Up next, Making, Ready. One tap each. Scan to collect.</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/board.png" alt="Ready board"><br><b>Ready board.</b> For the TV at the booth. Chimes when a number turns ready.</td>
+<td><img src="docs/screenshots/story-card.png" alt="Story card" width="38%" align="right"><b>Story card.</b> Generated on the guest's phone after pickup and shared with the native share sheet.</td>
 <td><img src="docs/screenshots/report.png" alt="Daily sales report"><br><b>Daily sales.</b> Cups, totals, PayNow vs card, CSV per order for the POS.</td>
 </tr>
 <tr>
@@ -86,11 +112,12 @@ sequenceDiagram
 | 1 | **Order screen** | `/order` | Drink tiles with live sold-out state. Hot/iced and milk/oat chips on each line, with surcharges applied automatically. Large **Bill on POS** total. **Paid · PayNow / Paid · Card** (no cash) issues the number and guest QR. |
 | 2 | **Barista queue** | `/queue` | Three lanes, one tap to advance, ages turn red after 10 min, undo/cancel under `⋯`, today's cups and average order-to-ready time. **Scan to collect** uses the tablet or laptop camera. |
 | 3 | **Guest status page** | `/o/<token>` | Received, Making, **Ready to collect**. Chime, vibration, title flash, full-screen ready state and **Web Push**. Pickup QR for collection. Works on a patchy signal. |
-| 4 | **Ready board** | `/board` | Full-screen TV view with ready and making lists, an arrival animation and a chime. |
+| 4 | **Ready board** | `/board` | Full-screen TV stage: audio-reactive visuals, full-screen ready takeover, voice call-outs, live wait estimate, charity meter, now-serving ticker. |
 | 5 | **Menu controls** | `/menu` | Prices, hot/iced, milk choice, sold-out toggles, iced and oat surcharges, add/remove drinks. Updates every tablet live, and edits made offline sync later. |
 | 6 | **Daily sales report** | `/report` | KPIs, per-drink and per-hour breakdown, **CSV export** with one row per order to match the POS, **Close day** with a PDPA wipe. |
 | + | Guest display | `/display` | Optional guest-facing second screen: latest order's number and QR, menu when idle. |
 | + | Public menu | `/m` | Read-only live menu with sold-out marks. |
+| + | **Live cockpit** | `/demo` | The whole booth on one screen with rush-hour, autopilot and wifi-kill controls. |
 
 ## 📶 Offline & sync
 
@@ -164,13 +191,16 @@ After `--wipe-all`, tablets notice the new data epoch and drop their cached copi
 | Client | Vanilla JS PWA, no build step | Loads fast on budget tablets, cached for offline |
 | Alerts | Web Push (`web-push`), Web Audio, Vibration API | Lock-screen alert on Android, chime and flash everywhere |
 | QR | `qrcode-generator`, `jsQR` + `BarcodeDetector` | Paperless ordering and camera collection |
-| Type & icons | Archivo variable (self-hosted), Phosphor | Matches the deck, works offline |
+| Brand | beans&beats' own mark, signal orange `#fa6105`, Alte Haas Grotesk (from [beansnbeats.com](https://beansnbeats.com)) | Looks like their booth, not a template |
+| Stage | Canvas 2D + Web Audio analyser + `speechSynthesis` | Beat-reactive board and voice call-outs, all on-device |
 
 ```
 server.js               HTTP, sync API, SSE, push, persistence, PII scrub
 public/shared/core.js   reducer, conflict rules, reports, CSV (server + browser)
 public/app.js           staff app: order, queue, board, display, menu, report, scanner
-public/guest.*          guest status page, alerts, pickup QR
+public/stage.js         board visuals, beat detection, voice, confetti
+public/demo.html        live cockpit (four app copies + sync feed)
+public/guest.*          guest status page, cup animation, ETA, alerts, pickup QR, story card
 public/sw.js            offline shell + push notifications
 scripts/reset-day.js    close a day / full wipe
 test/smoke.js           end-to-end test

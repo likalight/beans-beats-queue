@@ -6,10 +6,13 @@
   'use strict';
   const C = window.Core;
   const $app = document.getElementById('app');
+  // ?frame=x gives an embedded copy (demo cockpit) its own device storage; the login is shared.
+  const FRAME = (new URLSearchParams(location.search).get('frame') || '').replace(/[^a-z0-9]/gi, '').slice(0, 12);
+  const key = (k) => 'bb.' + (FRAME && k !== 'token' && k !== 'role' ? FRAME + '.' : '') + k;
   const LS = {
-    get(k, d) { try { const v = localStorage.getItem('bb.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem('bb.' + k, JSON.stringify(v)); return true; } catch (e) { console.warn('storage full', e); return false; } },
-    del(k) { try { localStorage.removeItem('bb.' + k); } catch (e) { /* ignore */ } },
+    get(k, d) { try { const v = localStorage.getItem(key(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(key(k), JSON.stringify(v)); return true; } catch (e) { console.warn('storage full', e); return false; } },
+    del(k) { try { localStorage.removeItem(key(k)); } catch (e) { /* ignore */ } },
   };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -102,7 +105,8 @@
     } finally { syncing = false; }
   }
   function ensureStream() {
-    if (es || S.simOffline || !S.token || !window.EventSource) return;
+    // Embedded cockpit copies poll instead: browsers cap open connections per host.
+    if (es || FRAME || S.simOffline || !S.token || !window.EventSource) return;
     es = new EventSource('/api/stream?auth=' + encodeURIComponent(S.token));
     es.addEventListener('ops', (ev) => {
       const ops = JSON.parse(ev.data);
@@ -120,6 +124,7 @@
     if (S.simOffline) return;
     if (S.outbox.length || Date.now() - S.lastOk > 10000) sync();
   }, 3000);
+  if (FRAME) setInterval(() => { if (!S.simOffline) sync(); }, 1200);
   window.addEventListener('online', () => syncSoon(0));
   window.addEventListener('offline', () => { S.online = false; renderNet(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncSoon(0); });
@@ -152,7 +157,7 @@
     { id: 'menu', label: 'Menu', icon: 'sliders-horizontal', lead: true }, { id: 'report', label: 'Sales', icon: 'chart-bar', lead: true },
   ];
   let route = location.pathname.replace(/^\//, '') || 'order';
-  function go(r) { route = r; history.pushState(null, '', '/' + r); render(); }
+  function go(r) { route = r; history.pushState(null, '', '/' + r + location.search); render(); }
   window.addEventListener('popstate', () => { route = location.pathname.replace(/^\//, '') || 'order'; render(); });
 
   // ------------------------------------------------------------------ helpers
@@ -172,7 +177,7 @@
     return s + (it.qty > 1 ? '<b>' + it.qty + '× </b>' : '') + esc(it.name);
   }
   function resetCounters() {
-    try { Object.keys(localStorage).filter((k) => k.startsWith('bb.counter.')).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
+    try { Object.keys(localStorage).filter((k) => k.startsWith(key('counter.'))).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
   }
   function nextNumber() {
     const day = today();
@@ -207,7 +212,7 @@
     else if (route === 'menu') body = viewMenu();
     else if (route === 'report') body = viewReport();
     $app.innerHTML =
-      '<header class="top"><div class="brand"><b>B&amp;B</b><span>Beans&amp;Beats</span></div><nav class="tabs">' +
+      '<header class="top"><div class="brand"><img src="/brand/mark-ink.png" alt="beans&amp;beats"><span>beans&amp;beats</span></div><nav class="tabs">' +
       TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '" class="' + (route === t.id ? 'on' : '') + '" title="' + t.label + '">' + ic(t.icon) + '<span>' + t.label + '</span></a>').join('') +
       '</nav><div id="net"></div><button class="iconbtn" data-act="settings" title="Device settings" aria-label="Device settings">' + ic('gear-six') + '</button></header>' +
       '<main>' + body + '</main>' + (modal ? modal : '');
@@ -227,7 +232,7 @@
   function renderLogin() {
     document.body.classList.remove('boardmode');
     pinBuf = '';
-    $app.innerHTML = '<div class="login"><section class="poster"><div class="mark"><b>B&amp;B</b>Beans&amp;Beats × Christmas Together</div>' +
+    $app.innerHTML = '<div class="login"><section class="poster"><div class="mark"><img src="/brand/mark-white.png" alt="beans&amp;beats">beans&amp;beats × Christmas Together</div>' +
       '<div><h1>Help us keep the queue moving.</h1><p>Charity coffee booth, Hall F, Marina Bay Sands. Every dollar of profit goes to Singapore Red Cross Young Hearts.</p></div>' +
       '<i class="ph-bold ph-snowflake snow" aria-hidden="true"></i></section>' +
       '<form id="loginForm" autocomplete="off"><h2>Enter booth PIN</h2><div class="pinrow" id="pinrow" aria-live="polite"></div>' +
@@ -330,7 +335,9 @@
     const mobile = draft.mobile && draft.consent ? draft.mobile.replace(/\s/g, '') : null;
     const op = dispatch('order.create', { id: uuid(), no, token, station: Number(S.station) || 1, name, mobile, consent: !!mobile, items, pay });
     cart = []; draft = { name: '', mobile: '', consent: false }; saveCart();
-    showConfirm(S.view.orders[op.payload.id]);
+    const o = S.view.orders[op.payload.id];
+    tellParent({ bb: 'order', url: guestUrl(o), no: C.fmtNo(o.no), manual: true });
+    showConfirm(o);
   }
   let modal = '', modalTimer = null;
   function showConfirm(o) {
@@ -360,7 +367,7 @@
     let h = '<div class="qbar"><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' +
       '<div class="stats"><div><small>Cups today</small><b class="num">' + todays.reduce((a, o) => a + C.orderCups(o), 0) + '</b></div>' +
       '<div><small>In progress</small><b class="num">' + list.filter((o) => o.status !== 'ready').length + '</b></div>' +
-      '<div><small>Avg. order to ready</small><b class="num">' + (avg == null ? '–' : avg + 'm') + '</b></div></div></div><div class="queue">';
+      '<div><small>Avg. order to ready</small><b class="num">' + (avg == null ? '–' : avg + 'm') + '</b></div></div></div>' + pulseHtml(2) + '<div class="queue">';
     for (const c of cols) {
       const os = list.filter((o) => o.status === c.st);
       const cicon = { queued: 'tray', making: 'coffee', ready: 'bell-ringing' }[c.st];
@@ -389,6 +396,10 @@
     }
     return h;
   }
+  function pulseHtml(max) {
+    const list = C.insights(S.view, now()).slice(0, max || 9);
+    return '<div class="pulse">' + list.map((i) => '<div class="tip-' + i.level + '">' + ic(i.icon) + '<span>' + esc(i.text) + '</span></div>').join('') + '</div>';
+  }
   function moreMenu(id) {
     const o = S.view.orders[id]; if (!o) return;
     const back = { making: 'queued', ready: 'making' }[o.status];
@@ -415,22 +426,57 @@
       });
     } catch (e) { /* audio blocked until first tap */ }
   }
+  function boardRow(o, isFresh) {
+    return '<div class="row' + (isFresh ? ' fresh' : '') + '"><b class="num">' + C.fmtNo(o.no) + '</b><span>' + esc(o.name || '') + '</span></div>';
+  }
   function renderBoard() {
     const ready = orders().filter((o) => o.status === 'ready').sort((a, b) => b.statusAt - a.statusAt);
     const making = orders().filter((o) => o.status === 'making').sort((a, b) => a.statusAt - b.statusAt);
+    const queued = orders().filter((o) => o.status === 'queued');
     const fresh = ready.filter((o) => !lastReady.has(o.id));
-    if (fresh.length && !boardFirst) chime();
-    boardFirst = false;
+    const imp = C.impact(S.view, now());
+    let el = $app.querySelector('.stage');
+    if (!el) {
+      $app.innerHTML = '<div class="board stage"><canvas id="viz" aria-hidden="true"></canvas>' +
+        '<div class="bhd"><div class="blogo"><img src="/brand/logo-white.png" alt="beans&amp;beats"><div><b>coffee clubbing</b><small>× Christmas Together 2026 · order at the counter, collect here</small></div></div>' +
+        '<div class="meter" id="meter"></div><div id="net"></div></div>' +
+        '<div class="cols"><section class="ready-list"><h2>' + ic('bell-ringing') + 'Ready to collect</h2><div id="bReady"></div></section>' +
+        '<section class="making"><h2>' + ic('coffee') + 'On the bar</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section></div>' +
+        '<div class="ticker"><div class="track" id="ticker"></div></div>' +
+        '<div id="takeover"></div><div id="milestone"></div>' +
+        '<div class="stage-ctl"><button data-act="stageVoice" id="vBtn"></button><button data-act="stageMic" id="mBtn"></button><button data-act="stageFull">' + ic('corners-out') + 'Full screen</button><button data-go="queue">' + ic('x') + 'Exit</button></div>' +
+        (window.Stage && Stage.started ? '' : '<div class="stage-start" id="stageStart"><img src="/brand/logo-white.png" alt=""><h2>Start the board</h2><p>One tap so the board can chime, call out orders by voice and move with the music.</p>' +
+          '<div><button class="btn go" data-act="stageGo" data-mic="1">' + ic('microphone') + 'Sync to the DJ (uses mic)</button><button class="btn line" data-act="stageGo">' + ic('play') + 'Start without mic</button></div>' +
+          '<small>Sound stays on this device. Nothing is recorded or sent anywhere.</small></div>') +
+        '</div>';
+      el = $app.querySelector('.stage');
+      if (window.Stage) Stage.mount($('#viz'));
+    }
+    const MAXR = 5, MAXM = 6;
+    $('#bReady').innerHTML = (ready.length ? ready.slice(0, MAXR).map((o) => boardRow(o, fresh.includes(o))).join('') : '<div class="idle">Your number lights up here the moment your drink is ready.</div>') +
+      (ready.length > MAXR ? '<div class="more-count">+ ' + (ready.length - MAXR) + ' more at the counter</div>' : '');
+    $('#bMaking').innerHTML = (making.length ? making.slice(0, MAXM).map((o) => boardRow(o)).join('') : '<div class="idle">Nothing on the bar</div>') +
+      (making.length > MAXM ? '<div class="more-count">+ ' + (making.length - MAXM) + ' more</div>' : '');
+    const openCups = making.concat(queued).reduce((a, o) => a + C.orderCups(o), 0);
+    const waitMin = Math.max(1, Math.round(openCups * C.pace(S.view, now()) / 60000));
+    $('#bWait').innerHTML = queued.length || making.length ? ic('hourglass-medium') + '<span>' + queued.length + ' in line · about <b class="num">' + waitMin + ' min</b> for a new order</span>' : ic('lightning') + '<span>No wait right now. Order at the counter.</span>';
+    const pct = Math.min(100, 100 * imp.total / imp.goal);
+    $('#meter').innerHTML = '<div class="m-top"><span>' + ic('heart') + 'Raised for Red Cross Young Hearts</span><b class="num">$' + Math.round(imp.total / 100).toLocaleString('en-SG') + '</b></div>' +
+      '<div class="m-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div><div class="m-sub"><span class="num">' + imp.cups.toLocaleString('en-SG') + ' cups poured</span><span class="num">goal $' + Math.round(imp.goal / 100).toLocaleString('en-SG') + '</span></div>';
+    const tick = ['order at the counter · scan your QR to follow your drink live', 'every dollar goes to Singapore Red Cross Young Hearts', imp.cups + ' cups poured so far, thank you'];
+    if (ready.length) tick.unshift('now serving ' + ready.slice(0, 4).map((o) => C.fmtNo(o.no) + ' ' + (o.name || '')).join(' · '));
+    const tickHtml = tick.map((t) => '<span>' + esc(t) + '</span><i>✦</i>').join('');
+    const tk = $('#ticker'); if (tk.dataset.k !== tickHtml) { tk.dataset.k = tickHtml; tk.innerHTML = tickHtml + tickHtml; }
+    const vb = $('#vBtn'); if (vb && window.Stage) vb.innerHTML = ic(Stage.voice ? 'speaker-high' : 'speaker-slash') + (Stage.voice ? 'Voice on' : 'Voice off');
+    const mb = $('#mBtn'); if (mb && window.Stage) mb.innerHTML = ic(Stage.mic ? 'waveform' : 'microphone-slash') + (Stage.mic ? 'Listening to the DJ' : 'Sync to music');
+    if (!boardFirst && window.Stage) {
+      for (const o of fresh.slice().reverse()) Stage.announce({ no: C.fmtNo(o.no), name: o.name, items: C.describeItems(o), cups: C.orderCups(o) });
+      const step = 50, lastM = LS.get('boardMilestone', null), mNow = Math.floor(imp.cups / step);
+      if (lastM != null && mNow > lastM && imp.cups) Stage.milestone(imp.cups + ' cups poured for Red Cross Young Hearts. Thank you!');
+      LS.set('boardMilestone', mNow);
+    } else if (boardFirst) LS.set('boardMilestone', Math.floor(imp.cups / 50));
+    if (S.seq || S.lastOk) boardFirst = false; // baseline = first render with real data
     lastReady = new Set(ready.map((o) => o.id)); LS.set('boardSeen', Array.from(lastReady));
-    const MAXR = 7, MAXM = 7;
-    const row = (o, isFresh) => '<div class="row' + (isFresh ? ' fresh' : '') + '"><b class="num">' + C.fmtNo(o.no) + '</b><span>' + esc(o.name || '') + '</span></div>';
-    $app.innerHTML = '<div class="board"><div class="bhd"><h1>Beans&amp;Beats <small>Order at the counter, collect here</small></h1><div id="net"></div></div><div class="cols">' +
-      '<section class="ready-list"><h2>' + ic('bell-ringing') + 'Ready to collect</h2>' + (ready.length ? ready.slice(0, MAXR).map((o) => row(o, fresh.includes(o))).join('') : '<div class="idle">Your number will appear here when your drink is ready.</div>') +
-      (ready.length > MAXR ? '<div class="more-count">+ ' + (ready.length - MAXR) + ' more at the counter</div>' : '') + '</section>' +
-      '<section class="making"><h2>' + ic('coffee') + 'Making now</h2>' + (making.length ? making.slice(0, MAXM).map((o) => row(o)).join('') : '<div class="idle">Nothing on the bar</div>') +
-      (making.length > MAXM ? '<div class="more-count">+ ' + (making.length - MAXM) + ' more</div>' : '') + '</section></div>' +
-      '<footer><span>All profits go to Singapore Red Cross Young Hearts</span><span>' + esc(S.view.settings.credit || '') + '</span></footer>' +
-      '<button class="exit" data-go="queue">Exit board</button></div>';
     renderNet();
   }
   setInterval(() => { if (S.token && (route === 'queue')) render(); }, 30000);
@@ -459,6 +505,11 @@
     h += '<tr><td><b>Iced surcharge</b></td><td><input type="number" id="iceS" step="0.10" min="0" value="' + C.money(S.view.settings.icedSurcharge || 0) + '" data-setting="icedSurcharge"></td><td colspan="2" class="mute">added to any iced drink</td></tr>';
     h += '</tbody></table></div>';
     h += '<div class="panel"><h2>Ready board credit line</h2><input type="text" id="creditIn" style="width:100%;padding:10px;border:2px solid var(--ink);border-radius:10px;font-size:16px" value="' + esc(S.view.settings.credit || '') + '" data-setting="credit"></div>';
+    const lv = {}; C.stockLevels(S.view, now()).forEach((x) => { lv[x.key] = x; });
+    const stockRows = [['oat', 'Oat milk'], ['milk', 'Fresh milk'], ['beans', 'Coffee beans'], ['cups', 'Iced cups']];
+    h += '<div class="panel"><h2><span>' + ic('package') + ' Stock & charity goal</span></h2><p class="mute" style="margin-top:-6px">Enter how many cups\' worth you have on hand. The queue screen warns the lead before anything runs out, using the live pace of orders.</p><table><thead><tr><th>Item</th><th>On hand (cups)</th><th>Left now</th><th>Runs out</th></tr></thead><tbody>' +
+      stockRows.map(([k, label]) => { const x = lv[k]; return '<tr><td><b>' + label + '</b></td><td><input type="number" min="0" step="1" id="stk-' + k + '" data-stock="' + k + '" placeholder="e.g. 120" value="' + (x ? x.start : '') + '"></td><td class="num">' + (x ? x.left : '–') + '</td><td class="num">' + (x && x.outAt ? C.sgTime(x.outAt) : '–') + '</td></tr>'; }).join('') +
+      '<tr><td><b>Charity goal (event)</b></td><td><input type="number" min="0" step="100" id="goalIn" data-setting="goal" value="' + Math.round((S.view.settings.goal || 500000) / 100) + '"></td><td colspan="2" class="mute">shown as a progress bar on the ready board</td></tr></tbody></table></div>';
     h += '<p class="mute">Changes apply on every tablet as soon as they sync, and are saved offline in the meantime. Price changes only affect new orders.</p>';
     return h;
   }
@@ -485,6 +536,7 @@
       '<div class="kpi"><small>' + ic('coffee') + 'Cups</small><b class="num">' + r.cups + '</b></div><div class="kpi"><small>' + ic('receipt') + 'Orders</small><b class="num">' + r.orders + '</b></div>' +
       '<div class="kpi"><small>' + ic('qr-code') + 'PayNow</small><b class="num">$' + C.money(r.byPay.paynow.total) + '</b></div>' +
       '<div class="kpi"><small>' + ic('credit-card') + 'Card</small><b class="num">$' + C.money(r.byPay.card.total) + '</b></div></div>' +
+      '<div class="impact-band"><div>' + ic('heart') + '<span>Raised for Singapore Red Cross Young Hearts, whole event</span></div><b class="num">$' + C.money(C.impact(S.view, now()).total) + '</b></div>' +
       (r.cancelled ? '<p class="mute" style="margin-top:-8px">' + r.cancelled + ' cancelled order(s) excluded.</p>' : '');
     h += '<table><thead><tr><th>Drink</th><th>Hot</th><th>Iced</th><th>Oat/alt</th><th>Cups</th><th>Total $</th></tr></thead><tbody>' +
       (r.byItem.length ? r.byItem.map((i) => '<tr><td>' + esc(i.name) + '</td><td class="num">' + i.hot + '</td><td class="num">' + i.iced + '</td><td class="num">' + i.oat + '</td><td class="num"><b>' + i.cups + '</b></td><td class="num">' + C.money(i.total) + '</td></tr>').join('') : '<tr><td colspan="6" class="mute">No sales yet</td></tr>') +
@@ -494,6 +546,7 @@
     if (hours.length) h += '<h3 style="margin:18px 0 8px">Cups by hour (SGT)</h3><div class="bars">' + hours.map((x) => '<div class="bar"><span class="num">' + String(x).padStart(2, '0') + ':00</span><div style="width:' + (100 * r.byHour[x].cups / maxC) + '%"></div><span class="num">' + r.byHour[x].cups + ' · $' + C.money(r.byHour[x].total) + '</span></div>').join('') + '</div>';
     h += '<div class="row-actions" style="margin-top:18px"><button class="btn dark" data-act="csv">' + ic('download-simple') + 'Download CSV for ' + esc(reportDay) + '</button><button class="btn line" data-act="csvAll">' + ic('calendar') + 'All days summary</button></div>';
     h += '<p class="mute" style="font-size:13px">The CSV lists one row per order (match each against a POS transaction by time and amount), then every drink line and a summary. It contains no names or phone numbers. It is generated on this tablet, so it works offline.</p></div>';
+    h += '<div class="panel"><h2><span>' + ic('pulse') + ' Live booth insights</span><span class="mute" style="font-size:13px;font-weight:600">recomputed on every order, works offline</span></h2>' + pulseHtml() + '</div>';
     h += '<div class="panel"><h2>End of day</h2><p>Close <b>' + esc(reportDay) + '</b> after the last drink is handed over. This marks any leftover orders collected, permanently deletes guest names and mobiles for that day on every device and on the server, and keeps the sales figures. Order numbers restart at 001 automatically each new day.</p>' +
       (closed ? '<p><b>Closed at ' + C.sgTime(closed) + '.</b></p>' : '<button class="btn warn" data-act="closeDay">' + ic('lock-key') + 'Close ' + esc(reportDay) + ' and wipe guest data</button>') + '</div>';
     return h;
@@ -659,8 +712,14 @@
       if (d.field === 'surcharge') { const c = Math.round(parseFloat(t.value) * 100); if (c >= 0) upsertMilk(d.medit, { surcharge: c }); }
       toast('Saved');
     }
+    if (d.stock) {
+      const n = parseInt(t.value, 10);
+      const stock = Object.assign({}, S.view.settings.stock || {});
+      if (isNaN(n) || n < 0) delete stock[d.stock]; else stock[d.stock] = { left: n, at: now() };
+      dispatch('settings.update', { stock }); toast('Stock set'); return;
+    }
     if (d.setting) {
-      const v = d.setting === 'icedSurcharge' ? Math.max(0, Math.round(parseFloat(t.value) * 100) || 0) : t.value.slice(0, 120);
+      const v = d.setting === 'icedSurcharge' || d.setting === 'goal' ? Math.max(0, Math.round(parseFloat(t.value) * 100) || 0) : t.value.slice(0, 120);
       dispatch('settings.update', { [d.setting]: v }); toast('Saved');
     }
   });
@@ -696,6 +755,15 @@
     switch (d.act) {
       case 'closeModal': if (e.target === t || t.tagName === 'BUTTON') { modal = ''; clearTimeout(modalTimer); render(); } break;
       case 'scan': openScanner(); break;
+      case 'stageGo': {
+        const st = $('#stageStart');
+        Stage.start(!!d.mic).then((ok) => { if (d.mic && !ok) toast('Mic not available, running the built-in groove'); render(); });
+        if (st) st.remove();
+        break;
+      }
+      case 'stageVoice': Stage.setVoice(!Stage.voice); if (Stage.voice) Stage.speak('Voice call-outs on.'); render(); break;
+      case 'stageMic': if (!Stage.mic) Stage.start(true).then((ok) => { toast(ok ? 'Listening to the music' : 'Mic not available'); render(); }); break;
+      case 'stageFull': if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
       case 'clearCart': cart = []; saveCart(); render(); break;
       case 'settings': settingsModal(); break;
       case 'saveSettings': {
@@ -720,6 +788,52 @@
         dispatch('day.close', { day: reportDay }); toast('Day closed'); break;
       }
     }
+  });
+
+  // ------------------------------------------------------------------ demo cockpit hooks
+  // The /demo page embeds several copies of this app and drives them with
+  // postMessage (same origin only). These never run on a real booth tablet.
+  function tellParent(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) { /* ignore */ } }
+  const NAMES = ['Mei', 'Jon', 'Aisha', 'Wei Ling', 'Dev', 'Hana', 'Arjun', 'Siti', 'Marcus', 'Priya', 'Ken', 'Nurul', 'Ethan', 'Joanne', 'Faiz', 'Chloe', 'Ravi', 'Yuki', 'Ben', 'Farah'];
+  function simOrder() {
+    const items = menuItems().filter((i) => !i.soldOut); if (!items.length) return null;
+    const ms = milks().filter((m) => !m.soldOut);
+    const lines = [];
+    const n = Math.random() < 0.7 ? 1 : 2;
+    for (let i = 0; i < n; i++) {
+      const it = items[Math.floor(Math.random() * items.length)];
+      const temp = (it.temps || ['hot']).includes('iced') && Math.random() < 0.55 ? 'iced' : (it.temps || ['hot'])[0];
+      const m = it.milk && ms.length ? (Math.random() < 0.35 ? ms[ms.length - 1] : ms[0]) : null;
+      const line = { itemId: it.id, qty: 1, temp, milkId: m ? m.id : null };
+      lines.push({ itemId: it.id, name: it.name, price: unitPrice(line), qty: 1, temp, milkId: m ? m.id : null, milkName: m ? m.name : null });
+    }
+    const op = dispatch('order.create', { id: uuid(), no: nextNumber(), token: rid(16), station: Number(S.station) || 1, name: NAMES[Math.floor(Math.random() * NAMES.length)], mobile: null, consent: false, items: lines, pay: Math.random() < 0.6 ? 'paynow' : 'card' });
+    const o = S.view.orders[op.payload.id];
+    tellParent({ bb: 'order', url: guestUrl(o), no: C.fmtNo(o.no), manual: false });
+    return o;
+  }
+  let pilot = null;
+  function autopilotTick() {
+    const t = now(), list = orders();
+    const ready = list.filter((o) => o.status === 'ready').sort((a, b) => a.statusAt - b.statusAt);
+    if (ready.length && t - ready[0].statusAt > 14000) return dispatch('order.status', { id: ready[0].id, status: 'collected' });
+    const making = list.filter((o) => o.status === 'making').sort((a, b) => a.statusAt - b.statusAt);
+    if (making.length && t - making[0].statusAt > 6500) return dispatch('order.status', { id: making[0].id, status: 'ready' });
+    const queued = list.filter((o) => o.status === 'queued').sort((a, b) => a.createdAt - b.createdAt);
+    if (queued.length && making.length < 2) return dispatch('order.status', { id: queued[0].id, status: 'making' });
+  }
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || !e.data || !e.data.bb) return;
+    const m = e.data;
+    if (m.bb === 'wifi') {
+      S.simOffline = !!m.off; LS.set('simOffline', S.simOffline);
+      if (S.simOffline) { closeStream(); S.online = false; } else syncSoon(0);
+      render();
+    }
+    if (m.bb === 'rush') { let i = 0; const n = Math.min(30, m.n || 10); const t = setInterval(() => { simOrder(); if (++i >= n) clearInterval(t); }, 650); }
+    if (m.bb === 'autopilot') { clearInterval(pilot); pilot = m.on ? setInterval(autopilotTick, 1600) : null; }
+    if (m.bb === 'go' && m.route) go(m.route);
+    if (m.bb === 'stage' && window.Stage) { Stage.start(false); const st = $('#stageStart'); if (st) st.remove(); }
   });
 
   // ------------------------------------------------------------------ boot

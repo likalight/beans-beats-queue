@@ -1,9 +1,10 @@
 /* Service worker: keeps the app shell available with no network and shows
  * Web Push "your drink is ready" notifications. API calls are never cached. */
-const VERSION = 'bb-v2';
+const VERSION = 'bb-v3';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/shared/core.js', '/vendor/qrcode.js', '/vendor/jsqr.js',
   '/guest.html', '/guest.js', '/menu.html', '/manifest.webmanifest', '/guest.webmanifest', '/icons/icon.svg',
-  '/vendor/fonts/archivo.woff2', '/vendor/ph/bold/style.css', '/vendor/ph/bold/Phosphor-Bold.woff2'];
+  '/vendor/fonts/archivo.woff2', '/vendor/ph/bold/style.css', '/vendor/ph/bold/Phosphor-Bold.woff2',
+  '/stage.js', '/demo.html', '/brand/AlteHaasGroteskRegular.woff2', '/brand/AlteHaasGroteskBold.woff2', '/brand/mark-ink.png', '/brand/mark-white.png', '/brand/logo-white.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
