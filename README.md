@@ -1,6 +1,6 @@
 # Beans&Beats × Christmas Together 2026 · Queue Management System
 
-**Live app:** https://REPLACE-WITH-DEPLOY-URL  
+**Live app:** https://beans-beats-queue.onrender.com  
 **Demo video (3 min):** https://REPLACE-WITH-VIDEO-LINK  
 **Technical summary (PDF):** [docs/technical-summary.pdf](docs/technical-summary.pdf)
 
