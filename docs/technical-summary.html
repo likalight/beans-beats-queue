@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Technical Summary · Beans&amp;Beats Queue</title>
+<style>
+  @page { size: A4; margin: 8mm 10mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #0a0a0a; font-size: 7.55pt; line-height: 1.28; margin: 0; }
+  h1 { font-size: 19pt; margin: 0; letter-spacing: -0.02em; font-weight: 900; text-transform: uppercase; }
+  .sub { color: #555; margin: 2px 0 7px; font-size: 8.6pt; }
+  h2 { font-size: 9.2pt; text-transform: uppercase; letter-spacing: .05em; margin: 7px 0 3px; padding-top: 4px; border-top: 1.6pt solid #0a0a0a; }
+  p { margin: 0 0 4px; }
+  ul { margin: 0 0 4px; padding-left: 13px; }
+  li { margin: 0 0 1.5px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 7.3pt; }
+  td, th { text-align: left; padding: 2px 4px; border-bottom: .5pt solid #ccc; vertical-align: top; }
+  th { font-size: 7pt; text-transform: uppercase; color: #555; }
+  .arch { font-family: Consolas, "Courier New", monospace; font-size: 7.2pt; background: #f2f2f2; padding: 5px 7px; border-radius: 4px; white-space: pre; line-height: 1.3; margin: 2px 0 4px; }
+  b { font-weight: 700; }
+  .foot { color: #555; font-size: 7.4pt; margin-top: 5px; border-top: .5pt solid #ccc; padding-top: 3px; }
+</style></head>
+<body>
+<h1>Beans&amp;Beats Queue: Technical Summary</h1>
+<div class="sub">Order &amp; pickup system for the Beans&amp;Beats charity coffee booth · Christmas Together 2026, Hall F, Marina Bay Sands, 26–29 Nov · runs in any browser, no app download</div>
+
+<div class="cols">
+<div>
+<h2>Stack &amp; architecture</h2>
+<ul>
+  <li><b>Server:</b> Node.js 22, plain <code>http</code> module, no framework, no database. One dependency (<code>web-push</code>) plus two vendored browser libraries (QR generator, jsQR reader). Deploys as one process with a persistent disk (Render Singapore blueprint or Docker).</li>
+  <li><b>Storage:</b> an append-only <b>op log</b> (<code>ops.ndjson</code>) replayed into memory at boot. It is crash-safe, auditable and trivially backed up. A 4-day event is around 20k ops, well under 10 MB.</li>
+  <li><b>Clients:</b> vanilla-JS PWA (no build step). A staff app serves Order, Queue, Ready board, Guest display, Menu and Report. A separate lightweight guest page, a service worker for the offline shell and Web Push, localStorage for the cached state and outbox.</li>
+  <li><b>Shared core:</b> <code>core.js</code> holds the reducer, conflict rules, report and CSV. The <i>same file</i> runs on the server and every tablet, so they can't disagree.</li>
+  <li><b>Realtime:</b> Server-Sent Events fan out new ops to every tablet (~100 ms), with 3 s polling as fallback. Guests poll a public endpoint every 3 s and get a Web Push on "ready".</li>
+  <li><b>Auth:</b> two PINs (barista, booth lead) give HMAC-signed 7-day tokens, so a tablet stays logged in through wifi loss. Lead-only ops (menu, close day, CSV) are enforced server-side.</li>
+</ul>
+<div class="arch">Order tablet ─┐   ops (outbox) ┌─► /api/sync ──► op log (disk)
+Queue tablet ─┼──────────────►─┤                  │
+Board / TV ───┘◄── SSE ops ────┴── broadcast ◄────┘
+Guest phone ──► /api/track/&lt;token&gt;  ◄── Web Push "ready"</div>
+
+<h2>How it works offline and syncs</h2>
+<ul>
+  <li>Every action is an <b>op</b> {uuid, type, timestamp, payload}. It is written to the device's <b>outbox</b> <i>before</i> the UI updates, so a dropped connection, reload or flat battery can't lose an order. The UI renders <i>server state + pending ops</i>.</li>
+  <li>The sync loop posts the outbox whenever the network allows. The server is <b>idempotent by op id</b>, so retries never duplicate, and returns everything the device missed since its cursor.</li>
+  <li><b>Conflict rules</b> converge regardless of arrival order. Order creation is first-write-wins on a UUID. Status and menu fields are last-writer-wins by timestamp, with the server clamping future-dated clocks. A late "making" can't undo a newer "ready".</li>
+  <li><b>Order numbers without a server:</b> each order station owns a number series (1 station: 001, 002…; 2 stations: odd/even). Numbers are unique offline and reset daily by Singapore date.</li>
+  <li>The guest QR carries a snapshot of the order in the URL <i>fragment</i> (never sent to the server), so the guest page renders before the tablet has synced. The service worker caches every screen, so tablets and the guest page reload offline.</li>
+  <li>Status pill: Live / Offline · saved on device / N to sync. ⚙ → <i>Simulate wifi drop</i> for drills. A full data reset changes a server <b>epoch</b>, and tablets then discard stale caches automatically.</li>
+</ul>
+</div>
+<div>
+<h2>Booth flow (confirmed with Beans&amp;Beats)</h2>
+<p>Guest orders at the counter → barista keys drink, hot/iced, milk/oat, first name → the POS operator keys in only the <b>total shown</b> (PayNow or card; no cash) → <b>Paid · PayNow / Card</b> issues the number and a QR on screen (tablet turned to the guest, or a guest-facing <code>/display</code>; <b>no paper</b>) → queue: one tap <i>Making</i>, one tap <i>Ready</i> → phone chimes, vibrates, turns black, push notification; the board lists the number and name → guest shows the pickup QR and the tablet/laptop <b>camera scans it</b> to mark the right order collected.</p>
+
+<h2>Personal data &amp; PDPA</h2>
+<table>
+  <tr><th>Data</th><th>Why</th><th>Retention</th></tr>
+  <tr><td>First name</td><td>Call out / board display</td><td>Deleted at <b>Close day</b> on every device and in the on-disk log</td></tr>
+  <tr><td>Mobile (optional)</td><td>Reach guest about this order only; needs a ticked consent</td><td>Deleted when the order is collected or cancelled; scrubbed from disk within 10 min</td></tr>
+  <tr><td>Push subscription</td><td>"Ready" alert, opt-in tap</td><td>Deleted on collect / close day</td></tr>
+  <tr><td>Order items, time, amount, method</td><td>Sales report / POS tally</td><td>Kept (not personal)</td></tr>
+</table>
+<ul>
+  <li><b>Consent &amp; purpose limitation:</b> mobile only with an explicit tick and stated purpose. The guest page carries a privacy notice and contact (general@beansnbeats.com).</li>
+  <li><b>Minimisation:</b> no surnames, emails or accounts, and <b>no payment data</b> (payments stay on the organiser's POS). CSV exports contain no names or mobiles.</li>
+  <li><b>Protection:</b> HTTPS only. Guest URLs use a 128-bit random token and show only that order (no lookup by number). Staff routes need a PIN token. The board shows first name + number only. Mobiles are masked in the queue.</li>
+  <li><b>Retention limitation:</b> automated purges as above. <code>reset-day.js --wipe-all</code> clears everything after the dry run.</li>
+</ul>
+
+<h2>Daily report</h2>
+<p>Cups, orders, total, PayNow vs card, per drink (hot/iced/oat) and per hour. The CSV has one row per order (= one POS transaction, match by time + amount), then drink lines and a summary. It is generated on the tablet, so it also works offline.</p>
+
+<h2>Known limitations</h2>
+<ul>
+  <li>If the <b>hall wifi is down for every device</b>, the order and queue tablets can't see each other's new orders until one reconnects; each keeps working on its own. <b>Mitigation:</b> a 4G travel router as the booth's own network, or take orders and run the queue on the same tablet during an outage.</li>
+  <li><b>iPhone:</b> push alerts need iOS 16.4+ and "Add to Home Screen". Otherwise the open page alerts with a chime and a black screen (iOS has no web vibration). Android Chrome gets full push.</li>
+  <li>The guest's phone needs mobile data to see live updates (hall wifi isn't required).</li>
+  <li>Single server instance (in-memory state + local disk); no horizontal scaling (not needed at ~1–2k cups/day). Back up <code>DATA_DIR</code> daily.</li>
+  <li>Staff auth is a shared PIN per role, not per person. Device clock skew is clamped but not fully corrected.</li>
+  <li>The POS is not integrated: the operator keys in the total by design, and the CSV is the reconciliation bridge.</li>
+</ul>
+</div>
+</div>
+<div class="foot">Repo: README covers setup, deployment and resetting between event days · <code>npm test</code> runs an end-to-end check of sync, conflicts, CSV and PDPA wipe · All profits go to Singapore Red Cross Young Hearts.</div>
+</body></html>

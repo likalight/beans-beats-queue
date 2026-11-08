@@ -1,0 +1,22 @@
+{
+  "name": "beans-beats-queue",
+  "version": "1.0.0",
+  "description": "Offline-first order & pickup queue for the Beans&Beats charity coffee booth at Christmas Together 2026",
+  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/smoke.js",
+    "reset-day": "node scripts/reset-day.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^1.4.4",
+    "web-push": "^3.6.7"
+  }
+}

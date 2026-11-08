@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menu · Beans&amp;Beats</title>
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<style>
+  :root { font-family:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif; color:#0a0a0a; }
+  body { margin:0; background:#fff; }
+  .wrap { max-width:440px; margin:0 auto; padding:28px 20px; }
+  h1 { font-size:40px; line-height:.95; text-transform:uppercase; font-weight:900; margin:0 0 6px; letter-spacing:-0.02em; }
+  .mute { color:#6b6b6b; }
+  .row { display:flex; justify-content:space-between; padding:14px 0; border-bottom:1px solid #d9d9d9; font-size:19px; font-weight:700; }
+  .row.out { color:#b5b5b5; text-decoration:line-through; }
+  .row small { display:block; font-weight:500; font-size:13px; color:#6b6b6b; text-decoration:none; }
+  p { line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Beans&amp;Beats café</h1>
+  <p class="mute">Order and pay at the counter (PayNow or card). All profits go to Singapore Red Cross Young Hearts.</p>
+  <div id="list" class="mute">Loading menu…</div>
+  <p class="mute" id="extras"></p>
+</div>
+<script>
+(async function () {
+  const m = (c) => '$' + (c / 100).toFixed(2);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  try {
+    const d = await (await fetch('/api/menu', { cache: 'no-store' })).json();
+    document.getElementById('list').innerHTML = d.items.map((i) => '<div class="row' + (i.soldOut ? ' out' : '') + '"><span>' + esc(i.name) +
+      '<small>' + (i.temps.includes('iced') ? 'Hot or iced' : 'Hot') + (i.milk ? ' · milk or oat' : '') + '</small></span><span>' + (i.soldOut ? 'Sold out' : m(i.price)) + '</span></div>').join('');
+    document.getElementById('extras').textContent = 'Iced +' + m(d.icedSurcharge) + d.milks.filter((x) => x.surcharge).map((x) => ' · ' + x.name + ' milk +' + m(x.surcharge)).join('');
+  } catch (e) { document.getElementById('list').textContent = 'Menu unavailable offline. Please check the board at the counter.'; }
+})();
+</script>
+</body>
+</html>

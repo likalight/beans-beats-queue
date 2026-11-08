@@ -1,0 +1,25 @@
+# One-click Render Blueprint. Uses the Singapore region and a 1 GB persistent
+# disk for the op log (a disk needs the Starter plan; the free plan works for
+# demos but loses data on restart).
+services:
+  - type: web
+    name: beans-beats-queue
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: BARISTA_PIN
+        sync: false
+      - key: LEAD_PIN
+        sync: false
+    disk:
+      name: queue-data
+      mountPath: /var/data
+      sizeGB: 1
