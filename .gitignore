@@ -2,3 +2,8 @@ node_modules/
 data/
 .claude/
 *.log
+video/node_modules/
+video/out/
+video/public/clips/*_f/
+video/public/clips/
+video/public/*.wav

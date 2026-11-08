@@ -10,7 +10,7 @@ A ready board that moves with the DJ and calls orders out loud, a phone page tha
 <br>
 
 [![Live demo](https://img.shields.io/badge/live_demo-online-fa6105?style=for-the-badge&logo=render&logoColor=white)](https://beans-beats-queue.onrender.com)
-[![Demo video](https://img.shields.io/badge/demo_video-3_min-111111?style=for-the-badge&logo=youtube&logoColor=white)](https://REPLACE-WITH-VIDEO-LINK)
+[![Demo video](https://img.shields.io/badge/demo_video-1:45-fa6105?style=for-the-badge&logo=airplayvideo&logoColor=white)](https://github.com/likalight/beans-beats-queue/blob/main/docs/demo.mp4)
 [![Technical summary](https://img.shields.io/badge/tech_summary-PDF-111111?style=for-the-badge&logo=adobeacrobatreader&logoColor=white)](docs/technical-summary.pdf)
 
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
@@ -21,7 +21,7 @@ A ready board that moves with the DJ and calls orders out loud, a phone page tha
 [![Tests](https://img.shields.io/badge/tests-passing-fa6105)](test/smoke.js)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111111)](LICENSE)
 
-[**Live cockpit**](https://beans-beats-queue.onrender.com/demo) &nbsp;·&nbsp; [Live app](https://beans-beats-queue.onrender.com) &nbsp;·&nbsp; [Demo video](https://REPLACE-WITH-VIDEO-LINK) &nbsp;·&nbsp; [Technical summary (PDF)](docs/technical-summary.pdf) &nbsp;·&nbsp; [Demo script](docs/demo-script.md)
+[**Live cockpit**](https://beans-beats-queue.onrender.com/demo) &nbsp;·&nbsp; [Live app](https://beans-beats-queue.onrender.com) &nbsp;·&nbsp; [Demo video](https://github.com/likalight/beans-beats-queue/blob/main/docs/demo.mp4) &nbsp;·&nbsp; [Technical summary (PDF)](docs/technical-summary.pdf) &nbsp;·&nbsp; [Demo script](docs/demo-script.md)
 
 <br>
 

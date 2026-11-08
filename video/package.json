@@ -1,0 +1,1 @@
+{ "name": "beans-beats-demo-video", "private": true, "scripts": { "soundtrack": "node make-soundtrack.mjs", "render": "remotion render src/index.ts BeansBeatsDemo out/beans-beats-demo.mp4 --codec=h264 --crf=20" } }
