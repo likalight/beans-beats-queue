@@ -173,7 +173,7 @@ setInterval(() => { for (const res of streams) res.write(': ping\n\n'); }, 20000
 
 // ---------- helpers ----------
 const MIME = { '.woff2': 'font/woff2', '.woff': 'font/woff', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon' };
 
 function send(res, code, body, type, extra) {
   const headers = Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
@@ -193,6 +193,20 @@ function serveFile(res, file, cache) {
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, 'Not found', 'text/plain');
     send(res, 200, data, MIME[path.extname(file)] || 'application/octet-stream', { 'Cache-Control': cache || 'no-cache' });
+  });
+}
+// Streams the demo film with byte ranges so every browser can seek and play it.
+function serveVideo(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err) return send(res, 404, 'Not found', 'text/plain');
+    const base = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' };
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (!m) { res.writeHead(200, Object.assign({ 'Content-Length': st.size }, base)); return fs.createReadStream(file).pipe(res); }
+    let start = m[1] ? +m[1] : st.size - +m[2], end = m[1] && m[2] ? Math.min(+m[2], st.size - 1) : st.size - 1;
+    if (!m[1]) start = Math.max(0, start);
+    if (start > end || start >= st.size) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); return res.end(); }
+    res.writeHead(206, Object.assign({ 'Content-Range': 'bytes ' + start + '-' + end + '/' + st.size, 'Content-Length': end - start + 1 }, base));
+    fs.createReadStream(file, { start, end }).pipe(res);
   });
 }
 function publicOrder(o) {
@@ -314,6 +328,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/vendor/jsqr.js') return serveFile(res, require.resolve('jsqr/dist/jsQR.js'), 'public, max-age=86400');
     if (p === '/m') return serveFile(res, path.join(PUBLIC_DIR, 'menu.html'));
     if (p === '/demo') return serveFile(res, path.join(PUBLIC_DIR, 'demo.html'));
+    if (p === '/film') return serveFile(res, path.join(PUBLIC_DIR, 'film.html'));
+    if (p === '/film.mp4') return serveVideo(req, res, path.join(__dirname, 'docs', 'demo.mp4'));
     if (p.startsWith('/o/')) return serveFile(res, path.join(PUBLIC_DIR, 'guest.html'));
     if (p === '/' || p === '/board' || p === '/queue' || p === '/order' || p === '/menu' || p === '/report' || p === '/display') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'));
     const file = path.normalize(path.join(PUBLIC_DIR, p));

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>beans&amp;beats · demo film</title>
+<meta name="description" content="A 1:45 guided walkthrough of the beans&beats x Christmas Together 2026 queue system.">
+<meta property="og:title" content="beans&amp;beats · keep the queue on the beat">
+<meta property="og:image" content="/brand/film-poster.jpg">
+<meta name="theme-color" content="#1d1b1b">
+<style>
+  @font-face { font-family: 'Alte Haas Grotesk'; src: url('/brand/AlteHaasGroteskRegular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+  @font-face { font-family: 'Alte Haas Grotesk'; src: url('/brand/AlteHaasGroteskBold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+  :root { --ink: #1d1b1b; --go: #fa6105; --paper: #f6f2ee; --muted: #a59d97; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: radial-gradient(1200px 600px at 80% -10%, rgba(250,97,5,.28), transparent 60%), var(--ink); color: var(--paper);
+    font-family: 'Alte Haas Grotesk', system-ui, sans-serif; min-height: 100dvh; }
+  main { max-width: 1180px; margin: 0 auto; padding: clamp(20px, 4vw, 48px) 16px 48px; }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: clamp(20px, 3vw, 32px); }
+  header img { height: 44px; }
+  h1 { font-size: clamp(26px, 4.4vw, 48px); line-height: 1.05; margin: 0; letter-spacing: -.02em; }
+  h1 span { color: var(--go); }
+  .frame { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 40px 120px -40px rgba(250,97,5,.55), 0 0 0 1px rgba(255,255,255,.08); }
+  video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .links a { color: var(--paper); text-decoration: none; padding: 11px 18px; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .links a.go { background: var(--go); border-color: var(--go); color: #fff; }
+  .links a:hover { border-color: var(--go); }
+  p.note { color: var(--muted); font-size: 14px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/brand/logo-white.png" alt="beans&amp;beats">
+    <h1>Keep the queue <span>on the beat.</span></h1>
+  </header>
+  <div class="frame">
+    <video src="/film.mp4" poster="/brand/film-poster.jpg" controls playsinline preload="metadata"></video>
+  </div>
+  <div class="links">
+    <a class="go" href="/demo">Open the live cockpit</a>
+    <a href="/">Open the app</a>
+    <a href="https://github.com/likalight/beans-beats-queue">GitHub repo</a>
+    <a href="/film.mp4" download="beans-beats-demo.mp4">Download MP4</a>
+  </div>
+  <p class="note">1:45 · sound on · barista PIN 1111, booth lead PIN 9999 · every cup supports Singapore Red Cross Young Hearts.</p>
+</main>
+</body>
+</html>
