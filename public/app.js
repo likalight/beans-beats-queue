@@ -17,6 +17,7 @@
     const b = new Uint8Array(n || 16); crypto.getRandomValues(b);
     return btoa(String.fromCharCode.apply(null, b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
+  function ic(name) { return '<i class="ph-bold ph-' + name + '" aria-hidden="true"></i>'; }
   function uuid() { return (crypto.randomUUID ? crypto.randomUUID() : rid(16)); }
 
   // ------------------------------------------------------------------ store
@@ -82,7 +83,7 @@
       if (r.epoch !== S.epoch) {
         // Server data was reset (or first contact): take a fresh snapshot.
         const st = await api('/api/state');
-        if (S.epoch) S.outbox = []; // ops from before a full reset must not resurrect old orders
+        if (S.epoch) { S.outbox = []; resetCounters(); } // ops from before a full reset must not resurrect old orders
         S.base = st.state; S.seq = st.seq; S.epoch = st.epoch;
         r = { acked: [], ops: [], now: st.now };
         if (S.outbox.length) syncSoon(50);
@@ -129,11 +130,26 @@
     route = 'login'; loginMsg = msg || ''; render();
   }
   let loginMsg = '';
+  let pinBuf = '';
+  function drawPin() {
+    const r = document.getElementById('pinrow'); if (!r) return;
+    const n = Math.max(4, pinBuf.length);
+    r.innerHTML = Array.from({ length: n }, (_, i) => '<span class="' + (i < pinBuf.length ? 'on' : '') + '"></span>').join('');
+  }
+  function pinKey(k) {
+    if (k === 'del') pinBuf = pinBuf.slice(0, -1); else if (pinBuf.length < 8) pinBuf += k;
+    drawPin(); const e = document.getElementById('loginErr'); if (e) e.textContent = '';
+  }
+  document.addEventListener('keydown', (e) => {
+    if (S.token || !document.getElementById('pinrow')) return;
+    if (/^\d$/.test(e.key)) pinKey(e.key); else if (e.key === 'Backspace') pinKey('del'); else if (e.key === 'Enter') { e.preventDefault(); doLogin(pinBuf); }
+  });
 
   // ------------------------------------------------------------------ routing
   const TABS = [
-    { id: 'order', label: 'Order' }, { id: 'queue', label: 'Queue' }, { id: 'board', label: 'Ready board' }, { id: 'display', label: 'Guest display' },
-    { id: 'menu', label: 'Menu', lead: true }, { id: 'report', label: 'Report', lead: true },
+    { id: 'order', label: 'Order', icon: 'coffee' }, { id: 'queue', label: 'Queue', icon: 'list-checks' },
+    { id: 'board', label: 'Ready board', icon: 'television-simple' }, { id: 'display', label: 'Guest display', icon: 'qr-code' },
+    { id: 'menu', label: 'Menu', icon: 'sliders-horizontal', lead: true }, { id: 'report', label: 'Sales', icon: 'chart-bar', lead: true },
   ];
   let route = location.pathname.replace(/^\//, '') || 'order';
   function go(r) { route = r; history.pushState(null, '', '/' + r); render(); }
@@ -146,14 +162,17 @@
   function milks() { return Object.values(S.view.menu.milks).filter((i) => !i.deleted).sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
   function ageMin(ts) { return Math.max(0, Math.floor((now() - ts) / 60000)); }
   function toast(msg) {
-    const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+    const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = ic('check-circle') + esc(msg); document.body.appendChild(t);
     setTimeout(() => t.remove(), 2600);
   }
   function lineDesc(it) {
     let s = '';
-    if (it.temp === 'iced') s += '<span class="tag iced">ICED</span>'; else s += '<span class="tag">HOT</span>';
-    if (it.milkName && it.milkName !== 'Milk') s += '<span class="tag">' + esc(it.milkName.toUpperCase()) + '</span>';
+    if (it.temp === 'iced') s += '<span class="tag iced">' + ic('snowflake') + 'ICED</span>'; else s += '<span class="tag hot">' + ic('fire') + 'HOT</span>';
+    if (it.milkName && it.milkName !== 'Milk') s += '<span class="tag oat">' + esc(it.milkName.toUpperCase()) + '</span>';
     return s + (it.qty > 1 ? '<b>' + it.qty + '× </b>' : '') + esc(it.name);
+  }
+  function resetCounters() {
+    try { Object.keys(localStorage).filter((k) => k.startsWith('bb.counter.')).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
   }
   function nextNumber() {
     const day = today();
@@ -188,9 +207,9 @@
     else if (route === 'menu') body = viewMenu();
     else if (route === 'report') body = viewReport();
     $app.innerHTML =
-      '<header class="top"><div class="brand">Beans&amp;Beats</div><nav class="tabs">' +
-      TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '" class="' + (route === t.id ? 'on' : '') + '">' + t.label + '</a>').join('') +
-      '</nav><div id="net"></div><button class="iconbtn" data-act="settings" title="Device settings" aria-label="Device settings">⚙</button></header>' +
+      '<header class="top"><div class="brand"><b>B&amp;B</b><span>Beans&amp;Beats</span></div><nav class="tabs">' +
+      TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '" class="' + (route === t.id ? 'on' : '') + '" title="' + t.label + '">' + ic(t.icon) + '<span>' + t.label + '</span></a>').join('') +
+      '</nav><div id="net"></div><button class="iconbtn" data-act="settings" title="Device settings" aria-label="Device settings">' + ic('gear-six') + '</button></header>' +
       '<main>' + body + '</main>' + (modal ? modal : '');
     renderNet();
     if (active) { const el = document.getElementById(active); if (el) { el.focus(); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) { /* number inputs */ } } }
@@ -201,27 +220,33 @@
     const n = S.outbox.length;
     const off = !S.online || S.simOffline;
     el.className = 'net' + (off ? ' off' : n ? ' pend' : '');
-    el.innerHTML = '<i></i>' + (S.simOffline ? 'Wifi drop (simulated)' : off ? 'Offline' : 'Live') + (n ? ' · ' + n + ' to sync' : off ? ' · saved on device' : '');
+    el.innerHTML = ic(off ? 'wifi-slash' : n ? 'arrows-clockwise' : 'wifi-high') + (S.simOffline ? 'Wifi drop (simulated)' : off ? 'Offline' : 'Live') + (n ? ' · ' + n + ' to sync' : off ? ', saved on device' : '');
   }
 
   // ---- login
   function renderLogin() {
     document.body.classList.remove('boardmode');
-    $app.innerHTML = '<div class="login"><form id="loginForm"><h1>Keep the<br>queue moving.</h1>' +
-      '<p class="mute">Beans&amp;Beats × Christmas Together 2026. Enter your booth PIN.</p>' +
-      '<input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="PIN" aria-label="PIN" required>' +
-      '<button class="btn dark" type="submit">Log in</button><div class="err" id="loginErr">' + esc(loginMsg) + '</div></form></div>';
-    $('#pin').focus();
+    pinBuf = '';
+    $app.innerHTML = '<div class="login"><section class="poster"><div class="mark"><b>B&amp;B</b>Beans&amp;Beats × Christmas Together</div>' +
+      '<div><h1>Help us keep the queue moving.</h1><p>Charity coffee booth, Hall F, Marina Bay Sands. Every dollar of profit goes to Singapore Red Cross Young Hearts.</p></div>' +
+      '<i class="ph-bold ph-snowflake snow" aria-hidden="true"></i></section>' +
+      '<form id="loginForm" autocomplete="off"><h2>Enter booth PIN</h2><div class="pinrow" id="pinrow" aria-live="polite"></div>' +
+      '<input id="pin" type="password" inputmode="numeric" class="hidden" aria-label="PIN">' +
+      '<div class="keypad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button type="button" data-key="' + n + '">' + n + '</button>').join('') +
+      '<button type="button" class="k-fn" data-key="del" aria-label="Delete">' + ic('backspace') + '</button><button type="button" data-key="0">0</button>' +
+      '<button type="submit" class="k-go" aria-label="Log in">' + ic('arrow-right') + '</button></div>' +
+      '<div class="err" id="loginErr">' + esc(loginMsg) + '</div><div class="hint">Baristas and the booth lead have separate PINs.<br>Log in once on wifi; the tablet then works offline.</div></form></div>';
+    drawPin();
   }
   async function doLogin(pin) {
     try {
       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
       const d = await res.json();
-      if (!res.ok) { $('#loginErr').textContent = d.error || 'Login failed'; return; }
+      if (!res.ok) { $('#loginErr').textContent = d.error || 'Login failed'; pinBuf = ''; drawPin(); const r = $('#pinrow'); r.classList.remove('shake'); void r.offsetWidth; r.classList.add('shake'); return; }
       S.token = d.token; S.role = d.role; LS.set('token', d.token); LS.set('role', d.role);
       try {
         const st = await api('/api/state');
-        if (st.epoch !== S.epoch || !Object.keys(S.base.menu.items).length) { if (S.epoch) S.outbox = []; S.base = st.state; S.seq = st.seq; S.epoch = st.epoch; }
+        if (st.epoch !== S.epoch || !Object.keys(S.base.menu.items).length) { if (S.epoch) { S.outbox = []; resetCounters(); } S.base = st.state; S.seq = st.seq; S.epoch = st.epoch; }
       } catch (e) { /* fine, sync will catch up */ }
       save(); rebuild(); loginMsg = '';
       route = d.role === 'lead' && route === 'login' ? 'order' : (route === 'login' ? 'order' : route);
@@ -245,33 +270,39 @@
     const ms = milks();
     const total = cartTotal();
     const ice = S.view.settings.icedSurcharge || 0;
-    let h = '<div class="order"><section><div class="drinks">';
+    const inCart = {}; cart.forEach((l) => { inCart[l.itemId] = (inCart[l.itemId] || 0) + l.qty; });
+    let h = '<div class="order"><section><div class="sect-h"><h2>Drinks</h2><span class="mute">' + items.filter((i) => !i.soldOut).length + ' available</span></div><div class="drinks">';
     for (const it of items) {
-      h += '<button class="drink' + (it.soldOut ? ' out' : '') + '" data-add="' + esc(it.id) + '"><b>' + esc(it.name) + '</b><span>' +
-        (it.soldOut ? 'Sold out' : '$' + C.money(it.price)) + '</span></button>';
+      const meta = [(it.temps || []).includes('iced') ? ((it.temps || []).includes('hot') ? 'Hot / Iced' : 'Iced') : 'Hot only'];
+      if (it.milk) meta.push('Milk / Oat'); else meta.push('Black');
+      h += '<button class="drink' + (it.soldOut ? ' out' : '') + '" data-add="' + esc(it.id) + '" aria-label="Add ' + esc(it.name) + '">' +
+        (inCart[it.id] ? '<span class="count num">' + inCart[it.id] + '</span>' : '<span class="plus">' + ic('plus') + '</span>') +
+        '<b>' + esc(it.name) + '</b><div class="meta">' + meta.map((m) => '<span>' + m + '</span>').join('') + '</div>' +
+        '<span class="price num">' + (it.soldOut ? 'Sold out' : '$' + C.money(it.price)) + '</span></button>';
     }
-    h += '</div><p class="mute" style="margin-top:14px;font-size:14px">Tap a drink to add it. Iced +$' + C.money(ice) + '. Milk options shown on the order line.</p></section>';
-    h += '<aside class="cart"><h2><span>New order</span><span class="mute num">#' + C.fmtNo(peekNumber()) + '</span></h2>';
-    if (!cart.length) h += '<div class="empty">No drinks yet</div>';
+    h += '</div><p class="tip">' + ic('info') + 'Tap to add. Set hot / iced (+$' + C.money(ice) + ') and milk on the order line.</p></section>';
+    h += '<aside class="cart"><h2><span>New order</span><span class="tag-no num">No. ' + C.fmtNo(peekNumber()) + '</span></h2>';
+    if (!cart.length) h += '<div class="empty">' + ic('coffee') + 'Tap a drink to start an order</div>';
     cart.forEach((l, i) => {
       const item = S.view.menu.items[l.itemId] || { name: l.name, temps: ['hot'], milk: false };
       h += '<div class="line"><div class="hd"><span>' + esc(item.name) + (item.soldOut ? ' <span class="tag" style="color:var(--warn)">SOLD OUT</span>' : '') + '</span><span class="num">$' + C.money(unitPrice(l) * l.qty) + '</span></div><div class="opts">';
       for (const t of ['hot', 'iced']) {
-        if ((item.temps || ['hot']).includes(t)) h += '<button class="chip' + (l.temp === t ? ' on' : '') + '" data-line="' + i + '" data-temp="' + t + '">' + (t === 'hot' ? 'Hot' : 'Iced' + (ice ? ' +$' + C.money(ice) : '')) + '</button>';
+        if ((item.temps || ['hot']).includes(t)) h += '<button class="chip' + (l.temp === t ? ' on ' + t : '') + '" data-line="' + i + '" data-temp="' + t + '">' + ic(t === 'hot' ? 'fire' : 'snowflake') + (t === 'hot' ? 'Hot' : 'Iced' + (ice ? ' +$' + C.money(ice) : '')) + '</button>';
       }
       if (item.milk) for (const m of ms) {
         h += '<button class="chip' + (l.milkId === m.id ? ' on' : '') + '" data-line="' + i + '" data-milk="' + esc(m.id) + '"' + (m.soldOut ? ' disabled' : '') + '>' + esc(m.name) + (m.surcharge ? ' +$' + C.money(m.surcharge) : '') + '</button>';
       }
-      h += '</div><div class="qty"><button data-line="' + i + '" data-q="-1" aria-label="Fewer">−</button><b class="num">' + l.qty + '</b><button data-line="' + i + '" data-q="1" aria-label="More">+</button>' +
-        '<span style="flex:1"></span><button class="chip" data-line="' + i + '" data-rm="1">Remove</button></div></div>';
+      h += '</div><div class="qty"><button class="step" data-line="' + i + '" data-q="-1" aria-label="Fewer">' + ic('minus') + '</button><b class="num">' + l.qty + '</b><button class="step" data-line="' + i + '" data-q="1" aria-label="More">' + ic('plus') + '</button>' +
+        '<button class="rm" data-line="' + i + '" data-rm="1">' + ic('trash') + 'Remove</button></div></div>';
     });
-    h += '<label class="field">First name<input id="fName" type="text" autocomplete="off" autocapitalize="words" maxlength="20" value="' + esc(draft.name) + '" placeholder="e.g. Mei"></label>';
-    h += '<label class="field">Mobile (optional)<input id="fMobile" type="tel" inputmode="tel" autocomplete="off" maxlength="16" value="' + esc(draft.mobile) + '" placeholder="Only if guest wants a call"></label>';
+    h += '<label class="field">First name <small>(for calling out the order)</small><input id="fName" type="text" autocomplete="off" autocapitalize="words" maxlength="20" value="' + esc(draft.name) + '" placeholder="e.g. Mei"></label>';
+    h += '<label class="field">Mobile <small>(optional)</small><input id="fMobile" type="tel" inputmode="tel" autocomplete="off" maxlength="16" value="' + esc(draft.mobile) + '" placeholder="Only if guest wants a call"></label>';
     if (draft.mobile) h += '<label class="consent"><input id="fConsent" type="checkbox"' + (draft.consent ? ' checked' : '') + '> Guest agrees Beans&amp;Beats may use this number only to reach them about this order today. It is deleted once the drink is collected.</label>';
-    h += '<div class="bill"><span>Bill on POS</span><b class="num">$' + C.money(total) + '</b></div>';
+    h += '<div class="bill"><span>' + ic('cash-register') + 'Bill on POS</span><b class="num">$' + C.money(total) + '</b></div>';
     const ok = cart.length && draft.name.trim() && (!draft.mobile || draft.consent) && cart.every((l) => { const it = S.view.menu.items[l.itemId]; return it && !it.soldOut; });
-    h += '<div class="pay"><button class="btn dark" data-pay="paynow"' + (ok ? '' : ' disabled') + '>Paid · PayNow</button><button class="btn dark" data-pay="card"' + (ok ? '' : ' disabled') + '>Paid · Card</button></div>';
-    if (cart.length) h += '<button class="btn" data-act="clearCart">Clear</button>';
+    h += '<div class="pay"><button class="btn dark" data-pay="paynow"' + (ok ? '' : ' disabled') + '>' + ic('qr-code') + 'Paid · PayNow</button><button class="btn dark" data-pay="card"' + (ok ? '' : ' disabled') + '>' + ic('credit-card') + 'Paid · Card</button></div>';
+    if (cart.length && !ok) h += '<div class="hint">' + (!draft.name.trim() ? 'Add the guest\'s first name to continue.' : draft.mobile && !draft.consent ? 'Tick consent or clear the mobile number.' : 'Remove sold-out drinks to continue.') + '</div>';
+    if (cart.length) h += '<button class="btn" data-act="clearCart">' + ic('x') + 'Clear order</button>';
     h += '</aside></div>';
     return h;
   }
@@ -305,10 +336,11 @@
   function showConfirm(o) {
     const url = guestUrl(o);
     modal = '<div class="modal" data-act="closeModal"><div class="sheet">' +
+      '<div class="paid">' + ic('check-circle') + 'Paid $' + C.money(C.orderTotal(o)) + ' by ' + (o.pay === 'card' ? 'card' : 'PayNow') + '</div>' +
       '<div class="mute">Order number</div><div class="big num">' + C.fmtNo(o.no) + '</div>' +
-      '<div style="font-size:20px;font-weight:700">' + esc(o.name) + ' · $' + C.money(C.orderTotal(o)) + ' · ' + (o.pay === 'card' ? 'Card' : 'PayNow') + '</div>' +
+      '<div class="who">' + esc(o.name) + ', ' + esc(C.describeItems(o)) + '</div>' +
       '<div class="qr">' + qrSvg(url) + '</div><div style="font-weight:700;font-size:20px">Scan to follow your order live.<br>We\'ll alert you when it\'s ready.</div><div class="mute" style="font-size:14px">Turn the tablet to the guest. No receipt: they show this page at pickup.</div>' +
-      '<button class="btn dark" data-act="closeModal">Next order</button></div></div>';
+      '<button class="btn dark" data-act="closeModal">' + ic('arrow-right') + 'Next order</button></div></div>';
     render();
     clearTimeout(modalTimer); modalTimer = setTimeout(() => { modal = ''; render(); }, 45000);
   }
@@ -322,32 +354,38 @@
       { st: 'making', title: 'Making', btn: 'Ready', next: 'ready' },
       { st: 'ready', title: 'Ready · waiting', btn: 'Collected', next: 'collected' },
     ];
-    let h = '<div class="row-actions" style="margin-bottom:14px"><button class="btn dark" data-act="scan" style="font-size:18px;padding:16px 22px">Scan to collect</button>' +
-      '<span class="mute" style="align-self:center;font-size:14px">Scan the QR on the guest\'s phone to hand over the right drink.</span></div><div class="queue">';
+    const todays = orders().filter((o) => o.day === day && o.status !== 'cancelled');
+    const waits = todays.filter((o) => o.times && o.times.ready).map((o) => (o.times.ready - o.createdAt) / 60000);
+    const avg = waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null;
+    let h = '<div class="qbar"><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' +
+      '<div class="stats"><div><small>Cups today</small><b class="num">' + todays.reduce((a, o) => a + C.orderCups(o), 0) + '</b></div>' +
+      '<div><small>In progress</small><b class="num">' + list.filter((o) => o.status !== 'ready').length + '</b></div>' +
+      '<div><small>Avg. order to ready</small><b class="num">' + (avg == null ? '–' : avg + 'm') + '</b></div></div></div><div class="queue">';
     for (const c of cols) {
       const os = list.filter((o) => o.status === c.st);
-      h += '<section class="col"><h2><span>' + c.title + '</span><span class="num">' + os.length + ' · ' + os.reduce((s, o) => s + C.orderCups(o), 0) + ' cups</span></h2>';
-      if (!os.length) h += '<div class="empty">—</div>';
+      const cicon = { queued: 'tray', making: 'coffee', ready: 'bell-ringing' }[c.st];
+      h += '<section class="col c-' + c.st + '"><h2><span>' + ic(cicon) + c.title + '</span><span class="cnt num">' + os.length + (os.length === 1 ? ' order · ' : ' orders · ') + os.reduce((s, o) => s + C.orderCups(o), 0) + ' cups</span></h2>';
+      if (!os.length) h += '<div class="empty">' + ic({ queued: 'smiley', making: 'coffee-bean', ready: 'check-circle' }[c.st]) + { queued: 'No orders waiting', making: 'Nothing on the bar', ready: 'Everything collected' }[c.st] + '</div>';
       for (const o of os) {
         const age = ageMin(o.createdAt);
         const since = ageMin(o.statusAt);
         h += '<article class="card ' + o.status + '"><div class="hd"><span class="no num">' + C.fmtNo(o.no) + '</span><span class="nm">' + esc(o.name || '—') + '</span>' +
-          '<span class="age num' + (age >= 10 && o.status !== 'ready' ? ' late' : '') + (o.status === 'ready' && since >= 10 ? ' late' : '') + '">' + (o.status === 'ready' ? since + 'm waiting' : age + 'm') + '</span></div>' +
+          '<span class="age num' + (age >= 10 && o.status !== 'ready' ? ' late' : '') + (o.status === 'ready' && since >= 10 ? ' late' : '') + '">' + ic('clock') + (o.status === 'ready' ? since + 'm waiting' : age + 'm') + '</span></div>' +
           '<ul>' + o.items.map((it) => '<li>' + lineDesc(it) + '</li>').join('') + '</ul>' +
           (o.mobile && o.status === 'ready' && since >= 5 ? '<div style="font-size:13px">Mobile on file: ' + esc(o.mobile.replace(/.(?=.{4})/g, '•')) + ' <button class="chip" data-call="' + o.id + '">Show</button></div>' : '') +
-          (S.pendingIds.has(o.id) ? '<div class="pending-sync">● saved on this tablet, syncing…</div>' : '') +
+          (S.pendingIds.has(o.id) ? '<div class="pending-sync">' + ic('cloud-arrow-up') + 'Saved on this tablet, syncing</div>' : '') +
           (o.day !== day ? '<div class="pending-sync">from ' + esc(o.day) + '</div>' : '') +
-          '<div class="act"><button class="btn dark" data-st="' + c.next + '" data-id="' + o.id + '">' + c.btn + '</button>' +
-          '<button class="btn more" data-more="' + o.id + '" aria-label="More actions">⋯</button></div></article>';
+          '<div class="act"><button class="btn dark" data-st="' + c.next + '" data-id="' + o.id + '">' + ic({ making: 'play', ready: 'bell-ringing', collected: 'hand-coins' }[c.next]) + c.btn + '</button>' +
+          '<button class="btn more" data-more="' + o.id + '" aria-label="More actions">' + ic('dots-three') + '</button></div></article>';
       }
       h += '</section>';
     }
     h += '</div>';
     const done = orders().filter((o) => o.day === day && (o.status === 'collected' || o.status === 'cancelled')).sort((a, b) => b.statusAt - a.statusAt).slice(0, 8);
     if (done.length) {
-      h += '<div class="panel" style="margin-top:16px"><h2>Recently collected / cancelled</h2><table><tbody>' +
-        done.map((o) => '<tr><td class="num"><b>' + C.fmtNo(o.no) + '</b></td><td>' + esc(o.name || '') + '</td><td>' + esc(C.describeItems(o)) + '</td><td>' + o.status + ' ' + C.sgTime(o.statusAt) + '</td><td><button class="chip" data-st="ready" data-id="' + o.id + '">Back to ready</button></td></tr>').join('') +
-        '</tbody></table></div>';
+      h += '<div class="recent"><div class="sect-h"><h3 style="font-size:16px">Recently collected</h3></div><div class="recent-list">' +
+        done.map((o) => '<div class="recent-item"><b class="num">' + C.fmtNo(o.no) + ' <span style="font-weight:650;font-size:16px">' + esc(o.name || '') + '</span></b><small>' + esc(C.describeItems(o)) + '</small><small>' + (o.status === 'cancelled' ? 'Cancelled' : 'Collected') + ' ' + C.sgTime(o.statusAt) + '</small><button class="chip" data-st="ready" data-id="' + o.id + '">' + ic('arrow-counter-clockwise') + 'Back to ready</button></div>').join('') +
+        '</div></div>';
     }
     return h;
   }
@@ -386,10 +424,10 @@
     lastReady = new Set(ready.map((o) => o.id)); LS.set('boardSeen', Array.from(lastReady));
     const MAXR = 7, MAXM = 7;
     const row = (o, isFresh) => '<div class="row' + (isFresh ? ' fresh' : '') + '"><b class="num">' + C.fmtNo(o.no) + '</b><span>' + esc(o.name || '') + '</span></div>';
-    $app.innerHTML = '<div class="board"><div class="bhd"><h1>Beans&amp;Beats</h1><div id="net"></div></div><div class="cols">' +
-      '<section class="ready-list"><h2>Ready to collect</h2>' + (ready.length ? ready.slice(0, MAXR).map((o) => row(o, fresh.includes(o))).join('') : '<div class="row"><span style="color:#555">—</span></div>') +
+    $app.innerHTML = '<div class="board"><div class="bhd"><h1>Beans&amp;Beats <small>Order at the counter, collect here</small></h1><div id="net"></div></div><div class="cols">' +
+      '<section class="ready-list"><h2>' + ic('bell-ringing') + 'Ready to collect</h2>' + (ready.length ? ready.slice(0, MAXR).map((o) => row(o, fresh.includes(o))).join('') : '<div class="idle">Your number will appear here when your drink is ready.</div>') +
       (ready.length > MAXR ? '<div class="more-count">+ ' + (ready.length - MAXR) + ' more at the counter</div>' : '') + '</section>' +
-      '<section class="making"><h2>Making</h2>' + making.slice(0, MAXM).map((o) => row(o)).join('') +
+      '<section class="making"><h2>' + ic('coffee') + 'Making now</h2>' + (making.length ? making.slice(0, MAXM).map((o) => row(o)).join('') : '<div class="idle">Nothing on the bar</div>') +
       (making.length > MAXM ? '<div class="more-count">+ ' + (making.length - MAXM) + ' more</div>' : '') + '</section></div>' +
       '<footer><span>All profits go to Singapore Red Cross Young Hearts</span><span>' + esc(S.view.settings.credit || '') + '</span></footer>' +
       '<button class="exit" data-go="queue">Exit board</button></div>';
@@ -400,22 +438,22 @@
   // ---- menu controls (lead)
   function viewMenu() {
     const items = menuItems(); const ms = milks();
-    let h = '<div class="panel"><h2><span>Drinks</span><button class="btn dark" data-act="addItem">+ Add drink</button></h2><table><thead><tr><th>Name</th><th>Price $</th><th>Hot</th><th>Iced</th><th>Milk choice</th><th>Status</th><th></th></tr></thead><tbody>';
+    let h = '<div class="panel"><h2><span>Drinks</span><button class="btn dark" data-act="addItem">' + ic('plus') + 'Add drink</button></h2><table><thead><tr><th>Name</th><th>Price $</th><th>Hot</th><th>Iced</th><th>Milk choice</th><th>Status</th><th></th></tr></thead><tbody>';
     for (const it of items) {
       h += '<tr><td><input type="text" id="n-' + esc(it.id) + '" value="' + esc(it.name) + '" data-edit="' + esc(it.id) + '" data-field="name"></td>' +
         '<td><input type="number" id="p-' + esc(it.id) + '" step="0.10" min="0" value="' + C.money(it.price) + '" data-edit="' + esc(it.id) + '" data-field="price"></td>' +
         '<td><input type="checkbox" data-edit="' + esc(it.id) + '" data-field="hot"' + ((it.temps || []).includes('hot') ? ' checked' : '') + '></td>' +
         '<td><input type="checkbox" data-edit="' + esc(it.id) + '" data-field="iced"' + ((it.temps || []).includes('iced') ? ' checked' : '') + '></td>' +
         '<td><input type="checkbox" data-edit="' + esc(it.id) + '" data-field="milk"' + (it.milk ? ' checked' : '') + '></td>' +
-        '<td><button class="toggle' + (it.soldOut ? ' out' : '') + '" data-sold="' + esc(it.id) + '">' + (it.soldOut ? 'SOLD OUT' : 'Available') + '</button></td>' +
+        '<td><button class="toggle' + (it.soldOut ? ' out' : '') + '" data-sold="' + esc(it.id) + '">' + ic(it.soldOut ? 'prohibit' : 'check') + (it.soldOut ? 'Sold out' : 'Available') + '</button></td>' +
         '<td><button class="chip" data-delitem="' + esc(it.id) + '">Delete</button></td></tr>';
     }
     h += '</tbody></table></div>';
-    h += '<div class="panel"><h2><span>Milk &amp; surcharges</span><button class="btn" data-act="addMilk">+ Add milk</button></h2><table><thead><tr><th>Milk</th><th>Surcharge $</th><th>Status</th><th></th></tr></thead><tbody>';
+    h += '<div class="panel"><h2><span>Milk &amp; surcharges</span><button class="btn" data-act="addMilk">' + ic('plus') + 'Add milk</button></h2><table><thead><tr><th>Milk</th><th>Surcharge $</th><th>Status</th><th></th></tr></thead><tbody>';
     for (const m of ms) {
       h += '<tr><td><input type="text" id="mn-' + esc(m.id) + '" value="' + esc(m.name) + '" data-medit="' + esc(m.id) + '" data-field="name"></td>' +
         '<td><input type="number" id="ms-' + esc(m.id) + '" step="0.10" min="0" value="' + C.money(m.surcharge || 0) + '" data-medit="' + esc(m.id) + '" data-field="surcharge"></td>' +
-        '<td><button class="toggle' + (m.soldOut ? ' out' : '') + '" data-msold="' + esc(m.id) + '">' + (m.soldOut ? 'SOLD OUT' : 'Available') + '</button></td>' +
+        '<td><button class="toggle' + (m.soldOut ? ' out' : '') + '" data-msold="' + esc(m.id) + '">' + ic(m.soldOut ? 'prohibit' : 'check') + (m.soldOut ? 'Sold out' : 'Available') + '</button></td>' +
         '<td><button class="chip" data-delmilk="' + esc(m.id) + '">Delete</button></td></tr>';
     }
     h += '<tr><td><b>Iced surcharge</b></td><td><input type="number" id="iceS" step="0.10" min="0" value="' + C.money(S.view.settings.icedSurcharge || 0) + '" data-setting="icedSurcharge"></td><td colspan="2" class="mute">added to any iced drink</td></tr>';
@@ -443,19 +481,21 @@
     const closed = S.view.closedDays[reportDay];
     let h = '<div class="panel"><h2><span>Daily sales · ' + esc(reportDay) + (closed ? ' · closed' : '') + '</span><select id="daySel" style="padding:8px;border-radius:8px;font-size:16px">' +
       days.map((d) => '<option' + (d === reportDay ? ' selected' : '') + '>' + d + '</option>').join('') + '</select></h2>';
-    h += '<div class="kpis"><div class="kpi"><small>Cups</small><b class="num">' + r.cups + '</b></div><div class="kpi"><small>Orders</small><b class="num">' + r.orders + '</b></div>' +
-      '<div class="kpi"><small>Total (SGD)</small><b class="num">$' + C.money(r.total) + '</b></div><div class="kpi"><small>PayNow</small><b class="num">$' + C.money(r.byPay.paynow.total) + '</b></div>' +
-      '<div class="kpi"><small>Card</small><b class="num">$' + C.money(r.byPay.card.total) + '</b></div><div class="kpi"><small>Cancelled</small><b class="num">' + r.cancelled + '</b></div></div>';
+    h += '<div class="kpis"><div class="kpi hero"><small>' + ic('coins') + 'Total sales (SGD)</small><b class="num">$' + C.money(r.total) + '</b></div>' +
+      '<div class="kpi"><small>' + ic('coffee') + 'Cups</small><b class="num">' + r.cups + '</b></div><div class="kpi"><small>' + ic('receipt') + 'Orders</small><b class="num">' + r.orders + '</b></div>' +
+      '<div class="kpi"><small>' + ic('qr-code') + 'PayNow</small><b class="num">$' + C.money(r.byPay.paynow.total) + '</b></div>' +
+      '<div class="kpi"><small>' + ic('credit-card') + 'Card</small><b class="num">$' + C.money(r.byPay.card.total) + '</b></div></div>' +
+      (r.cancelled ? '<p class="mute" style="margin-top:-8px">' + r.cancelled + ' cancelled order(s) excluded.</p>' : '');
     h += '<table><thead><tr><th>Drink</th><th>Hot</th><th>Iced</th><th>Oat/alt</th><th>Cups</th><th>Total $</th></tr></thead><tbody>' +
       (r.byItem.length ? r.byItem.map((i) => '<tr><td>' + esc(i.name) + '</td><td class="num">' + i.hot + '</td><td class="num">' + i.iced + '</td><td class="num">' + i.oat + '</td><td class="num"><b>' + i.cups + '</b></td><td class="num">' + C.money(i.total) + '</td></tr>').join('') : '<tr><td colspan="6" class="mute">No sales yet</td></tr>') +
       '</tbody></table>';
     const hours = Object.keys(r.byHour).map(Number).sort((a, b) => a - b);
     const maxC = Math.max(1, ...hours.map((x) => r.byHour[x].cups));
     if (hours.length) h += '<h3 style="margin:18px 0 8px">Cups by hour (SGT)</h3><div class="bars">' + hours.map((x) => '<div class="bar"><span class="num">' + String(x).padStart(2, '0') + ':00</span><div style="width:' + (100 * r.byHour[x].cups / maxC) + '%"></div><span class="num">' + r.byHour[x].cups + ' · $' + C.money(r.byHour[x].total) + '</span></div>').join('') + '</div>';
-    h += '<div class="row-actions" style="margin-top:16px"><button class="btn dark" data-act="csv">Download CSV for ' + esc(reportDay) + '</button><button class="btn line" data-act="csvAll">All days summary CSV</button></div>';
+    h += '<div class="row-actions" style="margin-top:18px"><button class="btn dark" data-act="csv">' + ic('download-simple') + 'Download CSV for ' + esc(reportDay) + '</button><button class="btn line" data-act="csvAll">' + ic('calendar') + 'All days summary</button></div>';
     h += '<p class="mute" style="font-size:13px">The CSV lists one row per order (match each against a POS transaction by time and amount), then every drink line and a summary. It contains no names or phone numbers. It is generated on this tablet, so it works offline.</p></div>';
     h += '<div class="panel"><h2>End of day</h2><p>Close <b>' + esc(reportDay) + '</b> after the last drink is handed over. This marks any leftover orders collected, permanently deletes guest names and mobiles for that day on every device and on the server, and keeps the sales figures. Order numbers restart at 001 automatically each new day.</p>' +
-      (closed ? '<p><b>Closed at ' + C.sgTime(closed) + '.</b></p>' : '<button class="btn warn" data-act="closeDay">Close ' + esc(reportDay) + ' and wipe guest data</button>') + '</div>';
+      (closed ? '<p><b>Closed at ' + C.sgTime(closed) + '.</b></p>' : '<button class="btn warn" data-act="closeDay">' + ic('lock-key') + 'Close ' + esc(reportDay) + ' and wipe guest data</button>') + '</div>';
     return h;
   }
   function download(name, text) {
@@ -470,10 +510,10 @@
     const latest = orders().filter((o) => o.station === st && o.status !== 'cancelled' && now() - o.createdAt < 90000).sort((a, b) => b.createdAt - a.createdAt)[0];
     let inner;
     if (latest) {
-      inner = '<div style="text-align:center;display:grid;gap:2vh;justify-items:center"><div style="font-size:2.4vw;color:#bdbdbd">Thanks, ' + esc(latest.name || '') + '! Your order number</div>' +
-        '<div style="font-size:16vw;font-weight:900;line-height:.9;letter-spacing:-.04em" class="num">' + C.fmtNo(latest.no) + '</div>' +
-        '<div style="background:#fff;padding:1.4vw;border-radius:1.4vw;width:min(34vh,30vw);height:min(34vh,30vw)" class="qr">' + qrSvg(guestUrl(latest)) + '</div>' +
-        '<div style="font-size:2.2vw;font-weight:700">Scan to follow your drink live</div><div style="font-size:1.6vw;color:#8c8c8c">We\'ll alert you when it\'s ready, then show the page at pickup.</div></div>';
+      inner = '<div class="display-hero"><div><div style="font-size:2.2vw;color:#8a8a83;font-weight:600">Thanks, ' + esc(latest.name || '') + '. Your order number</div>' +
+        '<div class="big num">' + C.fmtNo(latest.no) + '</div><div style="font-size:2.4vw;font-weight:750;margin-top:3vh;display:flex;gap:1vw;align-items:center">' + ic('device-mobile') + 'Scan to follow your drink live</div>' +
+        '<div style="font-size:1.5vw;color:#8a8a83;margin-top:1vh">We\'ll alert you when it\'s ready. Show the page at pickup.</div></div>' +
+        '<div class="qrbox">' + qrSvg(guestUrl(latest)) + '</div></div>';
     } else {
       const items = menuItems();
       inner = '<div><h2 style="font-size:2.2vw;color:#bdbdbd;margin-bottom:3vh">Today\'s menu</h2>' + items.map((it) => '<div class="row"><b style="font-size:3.6vw;min-width:auto;flex:1' + (it.soldOut ? ';text-decoration:line-through;color:#555' : '') + '">' + esc(it.name) + '</b><span class="num">' + (it.soldOut ? 'Sold out' : '$' + C.money(it.price)) + '</span></div>').join('') +
@@ -581,7 +621,7 @@
       '<label>Order station number<select id="stSel">' + [1, 2, 3, 4].map((n) => '<option' + (n == S.station ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
       '<label>Order stations at the booth<select id="stsSel">' + [1, 2, 3, 4].map((n) => '<option' + (n == S.stations ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
       '<p class="mute" style="margin:0;font-size:13px">With 2 order tablets, tablet 1 issues odd numbers and tablet 2 even numbers, so they never clash even while offline. Set this before the first order of the day.</p>' +
-      '<label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="simOff"' + (S.simOffline ? ' checked' : '') + '> Simulate wifi drop on this device (for demos and drills)</label>' +
+      '<label class="switch"><input type="checkbox" id="simOff"' + (S.simOffline ? ' checked' : '') + '> ' + ic('wifi-slash') + 'Simulate wifi drop on this device</label>' +
       '<p class="mute" style="margin:0;font-size:13px">Signed in as <b>' + esc(S.role === 'lead' ? 'Booth lead' : 'Barista') + '</b>. Device ' + esc(S.device) + '. ' + S.outbox.length + ' change(s) waiting to sync.</p>' +
       '<button class="btn dark" data-act="saveSettings">Save</button>' +
       '<button class="btn" data-act="logout"' + (S.outbox.length ? ' disabled title="Sync pending changes first"' : '') + '>Log out' + (S.outbox.length ? ' (sync first)' : '') + '</button></div></div></div>';
@@ -590,7 +630,7 @@
 
   // ------------------------------------------------------------------ events
   document.addEventListener('submit', (e) => {
-    if (e.target.id === 'loginForm') { e.preventDefault(); doLogin($('#pin').value); }
+    if (e.target.id === 'loginForm') { e.preventDefault(); doLogin(pinBuf); }
   });
   document.addEventListener('input', (e) => {
     const t = e.target;
@@ -625,6 +665,7 @@
     }
   });
   document.addEventListener('click', (e) => {
+    const k = e.target.closest('[data-key]'); if (k) { pinKey(k.dataset.key); return; }
     const t = e.target.closest('[data-go],[data-act],[data-add],[data-line],[data-pay],[data-st],[data-more],[data-sold],[data-msold],[data-delitem],[data-delmilk],[data-reprint],[data-call]');
     if (!t) return;
     const d = t.dataset;

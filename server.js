@@ -172,7 +172,7 @@ function broadcast(entries) {
 setInterval(() => { for (const res of streams) res.write(': ping\n\n'); }, 20000).unref();
 
 // ---------- helpers ----------
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+const MIME = { '.woff2': 'font/woff2', '.woff': 'font/woff', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 function send(res, code, body, type, extra) {
@@ -303,6 +303,11 @@ const server = http.createServer(async (req, res) => {
 
     // ---------- static ----------
     if (p === '/vendor/qrcode.js') return serveFile(res, require.resolve('qrcode-generator/qrcode.js'), 'public, max-age=86400');
+    if (p === '/vendor/fonts/archivo.woff2') return serveFile(res, require.resolve('@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2'), 'public, max-age=604800');
+    let vm;
+    if ((vm = p.match(/^\/vendor\/ph\/(bold|fill)\/(style\.css|Phosphor-(?:Bold|Fill)\.woff2?)$/))) {
+      return serveFile(res, path.join(__dirname, 'node_modules', '@phosphor-icons', 'web', 'src', vm[1], vm[2]), 'public, max-age=604800');
+    }
     if (p === '/vendor/jsqr.js') return serveFile(res, require.resolve('jsqr/dist/jsQR.js'), 'public, max-age=86400');
     if (p === '/m') return serveFile(res, path.join(PUBLIC_DIR, 'menu.html'));
     if (p.startsWith('/o/')) return serveFile(res, path.join(PUBLIC_DIR, 'guest.html'));

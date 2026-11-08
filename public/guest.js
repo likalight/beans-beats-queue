@@ -65,7 +65,7 @@
     $('s-received').className = 'step done' + (rank === 0 ? ' now' : '');
     $('s-making').className = 'step' + (rank >= 1 ? ' done' : '') + (rank === 1 ? ' now' : '');
     $('pill').className = 'pill' + (rank >= 2 ? ' on' : '');
-    $('pill').textContent = rank === 3 ? 'Collected' : 'Ready to collect';
+    $('pillTxt').textContent = rank === 3 ? 'Collected' : 'Ready to collect';
     document.body.classList.toggle('ready', rank === 2);
     document.querySelector('meta[name=theme-color]').content = rank === 2 ? '#0a0a0a' : '#ffffff';
     $('pickup').classList.toggle('big', rank === 2);
