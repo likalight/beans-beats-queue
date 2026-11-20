@@ -368,7 +368,16 @@ const server = http.createServer(async (req, res) => {
     if (p === '/demo') return serveFile(res, path.join(PUBLIC_DIR, 'demo.html'));
     if (p === '/film') return serveFile(res, path.join(PUBLIC_DIR, 'film.html'));
     if (p === '/film.mp4') return serveVideo(req, res, path.join(__dirname, 'docs', 'demo.mp4'));
-    if (p.startsWith('/o/')) return serveFile(res, path.join(PUBLIC_DIR, 'guest.html'));
+    if (p.startsWith('/o/')) {
+      // iPhone reads the manifest from the HTML as served, so "Add to Home Screen"
+      // must see this order's manifest (start_url /o/<token>), not the generic one.
+      const tm = p.match(/^\/o\/([A-Za-z0-9_-]{16,64})$/);
+      return fs.readFile(path.join(PUBLIC_DIR, 'guest.html'), 'utf8', (err, html) => {
+        if (err) return send(res, 404, 'Not found', 'text/plain');
+        if (tm) html = html.replace('href="/guest.webmanifest"', 'href="/api/manifest/' + tm[1] + '"');
+        send(res, 200, html, MIME['.html'], { 'Cache-Control': 'no-cache' });
+      });
+    }
     if (p === '/' || p === '/board' || p === '/queue' || p === '/order' || p === '/menu' || p === '/report' || p === '/display') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'));
     const file = path.normalize(path.join(PUBLIC_DIR, p));
     if (!file.startsWith(PUBLIC_DIR)) return send(res, 403, 'Forbidden', 'text/plain');
