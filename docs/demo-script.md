@@ -1,7 +1,7 @@
 # 3-minute demo video script
 
 Setup: the deployed URL is open in three windows, side by side if possible:
-(A) order tablet (logged in as lead `9999`), (B) barista queue (the same login on another device or browser profile), (C) a phone, or Chrome DevTools in phone mode, for the guest. Put (D) `/board` on a second monitor or tab.
+(A) order tablet (logged in as lead `3456` on the live site, `9999` locally), (B) barista queue (the same login on another device or browser profile), (C) a phone, or Chrome DevTools in phone mode, for the guest. Put (D) `/board` on a second monitor or tab.
 
 | Time | Show | Say |
 |---|---|---|

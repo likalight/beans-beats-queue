@@ -83,13 +83,13 @@ This project replaces the paper:
 
 | Role | PIN | Opens |
 |---|---|---|
-| **Barista** | `1111` | Order screen, barista queue, ready board, guest display, scan-to-collect |
-| **Booth lead** | `9999` | Everything above, plus stats, insights, menu controls and the daily sales report |
+| **Barista** | `2345` | Order screen, barista queue, ready board, guest display, scan-to-collect |
+| **Booth lead** | `3456` | Everything above, plus stats, insights, menu controls and the daily sales report |
 | **Guest** | none | Scan the QR shown after ordering, or open [`/m`](https://beans-beats-queue.onrender.com/m) for the menu |
-| **Judge** | `9999` | Open [**`/demo`**](https://beans-beats-queue.onrender.com/demo), log in once, press **Start**, then **Rush hour**. Turn the sound on. |
+| **Judge** | `3456` | Open [**`/demo`**](https://beans-beats-queue.onrender.com/demo), log in once, press **Start**, then **Rush hour**. Turn the sound on. |
 
 > [!NOTE]
-> These are the public demo PINs. The event deployment sets its own through `BARISTA_PIN` and `LEAD_PIN`.
+> These PINs are for the [live demo](https://beans-beats-queue.onrender.com). A local copy (`npm start`) uses the defaults `1111` / `9999`. The event deployment switches to private PINs through `BARISTA_PIN` and `LEAD_PIN`.
 
 ## 🔁 How a cup moves through the booth
 
