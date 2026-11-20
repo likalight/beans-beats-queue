@@ -109,8 +109,8 @@ sequenceDiagram
 
 | | Module | Route | Highlights |
 |---|---|---|---|
-| 1 | **Order screen** | `/order` | Drink tiles with live sold-out state. Hot/iced and milk/oat chips on each line, with surcharges applied automatically. Large **Bill on POS** total. **Paid · PayNow / Paid · Card** (no cash) issues the number and guest QR. |
-| 2 | **Barista queue** | `/queue` | Three lanes, one tap to advance, ages turn red after 10 min, undo/cancel under `⋯`, today's cups and average order-to-ready time. **Scan to collect** uses the tablet or laptop camera. |
+| 1 | **Order screen** | `/order` | Tap a drink, choose hot/iced, milk and cups in one small sheet, add. Surcharges apply automatically. **Custom item** takes anything not on the menu (say, a piccolo): staff type the name and price on the spot and it flows through the queue, board, guest page and report like any other drink. One big **Send to bar** button, with PayNow / Card noted for reconciliation. |
+| 2 | **Barista queue** | `/queue` | Three lanes, one big button per card to advance, ages turn red after 10 min, undo/cancel under `⋯`. Baristas see just the queue and "cups to make"; the booth lead also gets the stats and stock warnings. **Scan to collect** uses the tablet or laptop camera. |
 | 3 | **Guest status page** | `/o/<token>` | Received, Making, **Ready to collect**. Chime, vibration, title flash, full-screen ready state and **Web Push**. Pickup QR for collection. Works on a patchy signal. |
 | 4 | **Ready board** | `/board` | Full-screen TV stage: audio-reactive visuals, full-screen ready takeover, voice call-outs, live wait estimate, charity meter, now-serving ticker. |
 | 5 | **Menu controls** | `/menu` | Prices, hot/iced, milk choice, sold-out toggles, iced and oat surcharges, add/remove drinks. Updates every tablet live, and edits made offline sync later. |

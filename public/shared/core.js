@@ -78,7 +78,8 @@
           name: state.closedDays[day] ? null : String(p.name || '').slice(0, 40),
           mobile: state.closedDays[day] ? null : (p.mobile || null),
           items: (p.items || []).map((it) => ({
-            itemId: it.itemId, name: String(it.name).slice(0, 60), price: Math.max(0, Math.round(it.price || 0)),
+            itemId: it.itemId, name: String(it.name).slice(0, 60), price: Math.min(100000, Math.max(0, Math.round(it.price || 0))),
+            custom: !!it.custom,
             qty: Math.max(1, Math.min(20, it.qty | 0 || 1)), temp: it.temp === 'iced' ? 'iced' : 'hot',
             milkId: it.milkId || null, milkName: it.milkName || null,
           })),

@@ -146,6 +146,8 @@
     drawPin(); const e = document.getElementById('loginErr'); if (e) e.textContent = '';
   }
   document.addEventListener('keydown', (e) => {
+    if (S.token && e.key === 'Escape' && pick) { pick = null; render(); return; }
+    if (S.token && e.key === 'Enter' && pick && (e.target.id === 'pName' || e.target.id === 'pPrice')) { e.preventDefault(); const b = document.querySelector('[data-pk=add]'); if (b && !b.disabled) b.click(); return; }
     if (S.token || !document.getElementById('pinrow')) return;
     if (/^\d$/.test(e.key)) pinKey(e.key); else if (e.key === 'Backspace') pinKey('del'); else if (e.key === 'Enter') { e.preventDefault(); doLogin(pinBuf); }
   });
@@ -174,6 +176,7 @@
     let s = '';
     if (it.temp === 'iced') s += '<span class="tag iced">' + ic('snowflake') + 'ICED</span>'; else s += '<span class="tag hot">' + ic('fire') + 'HOT</span>';
     if (it.milkName && it.milkName !== 'Milk') s += '<span class="tag oat">' + esc(it.milkName.toUpperCase()) + '</span>';
+    if (it.custom) s += '<span class="tag custom">CUSTOM</span>';
     return s + (it.qty > 1 ? '<b>' + it.qty + '× </b>' : '') + esc(it.name);
   }
   function resetCounters() {
@@ -215,9 +218,10 @@
       '<header class="top"><div class="brand"><img src="/brand/mark-ink.png" alt="beans&amp;beats"><span>beans&amp;beats</span></div><nav class="tabs">' +
       TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '" class="' + (route === t.id ? 'on' : '') + '" title="' + t.label + '">' + ic(t.icon) + '<span>' + t.label + '</span></a>').join('') +
       '</nav><div id="net"></div><button class="iconbtn" data-act="settings" title="Device settings" aria-label="Device settings">' + ic('gear-six') + '</button></header>' +
-      '<main>' + body + '</main>' + (modal ? modal : '');
+      '<main>' + body + '</main>' + (pick && route === 'order' ? pickSheet() : (modal || ''));
     renderNet();
     if (active) { const el = document.getElementById(active); if (el) { el.focus(); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) { /* number inputs */ } } }
+    if (pick && pick.custom && !pick.focused) { const el = document.getElementById('pName'); if (el) { el.focus(); pick.focused = true; } }
     window.scrollTo(0, keepScroll);
   }
   function renderNet() {
@@ -260,54 +264,63 @@
   }
 
   // ---- order screen
+  // Kept deliberately simple for a busy counter: tap a drink, pick hot/iced +
+  // milk + cups in one small sheet, add, then one big "Send to bar" button.
+  // Anything not on the menu goes in through the "Custom item" tile.
   let cart = LS.get('cart', []);
   let draft = LS.get('draft', { name: '', mobile: '', consent: false });
+  let payMethod = LS.get('payMethod', 'paynow');
+  let showMobile = false;
+  let pick = null; // the drink sheet that is open, if any
   function saveCart() { LS.set('cart', cart); LS.set('draft', draft); }
   function unitPrice(line) {
+    if (line.custom) return line.price || 0; // staff key the full price for custom items
     const item = S.view.menu.items[line.itemId];
     const milk = line.milkId && S.view.menu.milks[line.milkId];
     const base = item ? item.price : line.price;
     return base + (line.temp === 'iced' ? (S.view.settings.icedSurcharge || 0) : 0) + (milk ? milk.surcharge || 0 : 0);
   }
   function cartTotal() { return cart.reduce((s, l) => s + unitPrice(l) * l.qty, 0); }
+  function lineMeta(l) {
+    const m = l.milkId && S.view.menu.milks[l.milkId];
+    return [l.temp === 'iced' ? 'Iced' : 'Hot', m ? m.name : null].filter(Boolean).join(' · ');
+  }
   function viewOrder() {
     const items = menuItems();
-    const ms = milks();
     const total = cartTotal();
-    const ice = S.view.settings.icedSurcharge || 0;
+    const cups = cart.reduce((s, l) => s + l.qty, 0);
     const inCart = {}; cart.forEach((l) => { inCart[l.itemId] = (inCart[l.itemId] || 0) + l.qty; });
-    let h = '<div class="order"><section><div class="sect-h"><h2>Drinks</h2><span class="mute">' + items.filter((i) => !i.soldOut).length + ' available</span></div><div class="drinks">';
+    let h = '<div class="order"><section><div class="sect-h"><h2>Drinks</h2><span class="mute">Tap a drink to add it</span></div><div class="drinks">';
     for (const it of items) {
       const meta = [(it.temps || []).includes('iced') ? ((it.temps || []).includes('hot') ? 'Hot / Iced' : 'Iced') : 'Hot only'];
       if (it.milk) meta.push('Milk / Oat'); else meta.push('Black');
-      h += '<button class="drink' + (it.soldOut ? ' out' : '') + '" data-add="' + esc(it.id) + '" aria-label="Add ' + esc(it.name) + '">' +
+      h += '<button class="drink' + (it.soldOut ? ' out' : '') + (inCart[it.id] ? ' picked' : '') + '" data-add="' + esc(it.id) + '"' + (it.soldOut ? ' disabled' : '') + ' aria-label="Add ' + esc(it.name) + '">' +
         (inCart[it.id] ? '<span class="count num">' + inCart[it.id] + '</span>' : '<span class="plus">' + ic('plus') + '</span>') +
         '<b>' + esc(it.name) + '</b><div class="meta">' + meta.map((m) => '<span>' + m + '</span>').join('') + '</div>' +
         '<span class="price num">' + (it.soldOut ? 'Sold out' : '$' + C.money(it.price)) + '</span></button>';
     }
-    h += '</div><p class="tip">' + ic('info') + 'Tap to add. Set hot / iced (+$' + C.money(ice) + ') and milk on the order line.</p></section>';
+    h += '<button class="drink custom" data-add="__custom" aria-label="Add a custom item that is not on the menu">' +
+      (inCart.custom ? '<span class="count num">' + inCart.custom + '</span>' : '<span class="plus">' + ic('pencil-simple') + '</span>') +
+      '<b>Custom item</b><div class="meta"><span>Not on the menu?</span><span>e.g. Piccolo</span></div><span class="price">Type name &amp; price</span></button>';
+    h += '</div></section>';
     h += '<aside class="cart"><h2><span>New order</span><span class="tag-no num">No. ' + C.fmtNo(peekNumber()) + '</span></h2>';
-    if (!cart.length) h += '<div class="empty">' + ic('coffee') + 'Tap a drink to start an order</div>';
-    cart.forEach((l, i) => {
-      const item = S.view.menu.items[l.itemId] || { name: l.name, temps: ['hot'], milk: false };
-      h += '<div class="line"><div class="hd"><span>' + esc(item.name) + (item.soldOut ? ' <span class="tag" style="color:var(--warn)">SOLD OUT</span>' : '') + '</span><span class="num">$' + C.money(unitPrice(l) * l.qty) + '</span></div><div class="opts">';
-      for (const t of ['hot', 'iced']) {
-        if ((item.temps || ['hot']).includes(t)) h += '<button class="chip' + (l.temp === t ? ' on ' + t : '') + '" data-line="' + i + '" data-temp="' + t + '">' + ic(t === 'hot' ? 'fire' : 'snowflake') + (t === 'hot' ? 'Hot' : 'Iced' + (ice ? ' +$' + C.money(ice) : '')) + '</button>';
-      }
-      if (item.milk) for (const m of ms) {
-        h += '<button class="chip' + (l.milkId === m.id ? ' on' : '') + '" data-line="' + i + '" data-milk="' + esc(m.id) + '"' + (m.soldOut ? ' disabled' : '') + '>' + esc(m.name) + (m.surcharge ? ' +$' + C.money(m.surcharge) : '') + '</button>';
-      }
-      h += '</div><div class="qty"><button class="step" data-line="' + i + '" data-q="-1" aria-label="Fewer">' + ic('minus') + '</button><b class="num">' + l.qty + '</b><button class="step" data-line="' + i + '" data-q="1" aria-label="More">' + ic('plus') + '</button>' +
-        '<button class="rm" data-line="' + i + '" data-rm="1">' + ic('trash') + 'Remove</button></div></div>';
-    });
-    h += '<label class="field">First name <small>(for calling out the order)</small><input id="fName" type="text" autocomplete="off" autocapitalize="words" maxlength="20" value="' + esc(draft.name) + '" placeholder="e.g. Mei"></label>';
-    h += '<label class="field">Mobile <small>(optional)</small><input id="fMobile" type="tel" inputmode="tel" autocomplete="off" maxlength="16" value="' + esc(draft.mobile) + '" placeholder="Only if guest wants a call"></label>';
-    if (draft.mobile) h += '<label class="consent"><input id="fConsent" type="checkbox"' + (draft.consent ? ' checked' : '') + '> Guest agrees Beans&amp;Beats may use this number only to reach them about this order today. It is deleted once the drink is collected.</label>';
-    h += '<div class="bill"><span>' + ic('cash-register') + 'Bill on POS</span><b class="num">$' + C.money(total) + '</b></div>';
-    const ok = cart.length && draft.name.trim() && (!draft.mobile || draft.consent) && cart.every((l) => { const it = S.view.menu.items[l.itemId]; return it && !it.soldOut; });
-    h += '<div class="pay"><button class="btn dark" data-pay="paynow"' + (ok ? '' : ' disabled') + '>' + ic('qr-code') + 'Paid · PayNow</button><button class="btn dark" data-pay="card"' + (ok ? '' : ' disabled') + '>' + ic('credit-card') + 'Paid · Card</button></div>';
-    if (cart.length && !ok) h += '<div class="hint">' + (!draft.name.trim() ? 'Add the guest\'s first name to continue.' : draft.mobile && !draft.consent ? 'Tick consent or clear the mobile number.' : 'Remove sold-out drinks to continue.') + '</div>';
-    if (cart.length) h += '<button class="btn" data-act="clearCart">' + ic('x') + 'Clear order</button>';
+    h += '<label class="field">First name<input id="fName" type="text" autocomplete="off" autocapitalize="words" maxlength="20" value="' + esc(draft.name) + '" placeholder="e.g. Mei"></label>';
+    if (!cart.length) h += '<div class="empty">' + ic('coffee') + 'Tap a drink to start</div>';
+    else h += '<ul class="lines">' + cart.map((l, i) =>
+      '<li><div class="ln"><b>' + esc(l.name) + (l.custom ? ' <span class="tag custom">CUSTOM</span>' : '') + '</b><small>' + esc(lineMeta(l)) + ' · $' + C.money(unitPrice(l)) + '</small></div>' +
+      '<div class="qty"><button class="step" data-line="' + i + '" data-q="-1" aria-label="Fewer">' + ic('minus') + '</button><b class="num">' + l.qty + '</b><button class="step" data-line="' + i + '" data-q="1" aria-label="More">' + ic('plus') + '</button></div>' +
+      '<button class="rm" data-line="' + i + '" data-rm="1" aria-label="Remove ' + esc(l.name) + '">' + ic('trash') + '</button></li>').join('') + '</ul>';
+    if (showMobile || draft.mobile) {
+      h += '<label class="field">Mobile <small>(optional)</small><input id="fMobile" type="tel" inputmode="tel" autocomplete="off" maxlength="16" value="' + esc(draft.mobile) + '" placeholder="Only if guest wants a call"></label>';
+      if (draft.mobile) h += '<label class="consent"><input id="fConsent" type="checkbox"' + (draft.consent ? ' checked' : '') + '> Guest agrees Beans&amp;Beats may use this number only to reach them about this order today. It is deleted once the drink is collected.</label>';
+    } else h += '<button class="linkbtn" data-act="showMobile">' + ic('phone') + 'Add a mobile number (optional)</button>';
+    h += '<div class="bill"><span>' + cups + (cups === 1 ? ' cup' : ' cups') + ' · key into POS</span><b class="num">$' + C.money(total) + '</b></div>';
+    h += '<div class="seg" role="group" aria-label="How the guest paid">' + [['paynow', 'qr-code', 'PayNow'], ['card', 'credit-card', 'Card']].map((p) =>
+      '<button data-paym="' + p[0] + '" aria-pressed="' + (payMethod === p[0]) + '">' + ic(p[1]) + p[2] + '</button>').join('') + '</div>';
+    const ok = cart.length && draft.name.trim() && (!draft.mobile || draft.consent) && cart.every((l) => { if (l.custom) return true; const it = S.view.menu.items[l.itemId]; return it && !it.soldOut; });
+    h += '<button class="btn dark send" data-act="send"' + (ok ? '' : ' disabled') + '>' + ic('paper-plane-tilt') + 'Send to bar</button>';
+    if (cart.length && !ok) h += '<div class="hint">' + (!draft.name.trim() ? 'Add the guest\'s first name to send.' : draft.mobile && !draft.consent ? 'Tick consent or clear the mobile number.' : 'Remove sold-out drinks to send.') + '</div>';
+    if (cart.length) h += '<button class="linkbtn" data-act="clearCart">' + ic('x') + 'Clear order</button>';
     h += '</aside></div>';
     return h;
   }
@@ -318,11 +331,71 @@
     for (const o of orders()) if (o.day === day && (o.no % n) === (st % n) && o.no > max) max = o.no;
     _peek = max ? max + n : st; return _peek;
   }
+  function pushLine(line) {
+    const same = cart.find((l) => l.itemId === line.itemId && l.temp === line.temp && l.milkId === line.milkId && (!l.custom || (l.name === line.name && l.price === line.price)));
+    if (same) same.qty = Math.min(20, same.qty + line.qty); else cart.push(line);
+    saveCart();
+  }
+  // Tapping a drink opens the sheet, unless there is nothing to choose.
   function addDrink(id) {
-    const it = S.view.menu.items[id]; if (!it || it.soldOut) return;
     const firstMilk = milks().find((m) => !m.soldOut);
-    cart.push({ itemId: id, name: it.name, qty: 1, temp: (it.temps || ['hot'])[0], milkId: it.milk && firstMilk ? firstMilk.id : null });
-    saveCart(); render();
+    if (id === '__custom') {
+      pick = { custom: true, itemId: 'custom', name: '', priceText: '', temp: 'hot', milkId: null, qty: 1 };
+      render(); return;
+    }
+    const it = S.view.menu.items[id]; if (!it || it.soldOut) return;
+    const temps = it.temps || ['hot'];
+    const line = { itemId: id, name: it.name, qty: 1, temp: temps[0], milkId: it.milk && firstMilk ? firstMilk.id : null };
+    if (temps.length < 2 && !it.milk) { pushLine(line); toast(it.name + ' added'); render(); return; }
+    pick = line; render();
+  }
+  function pickPrice() {
+    if (!pick) return 0;
+    if (pick.custom) { const c = Math.round(parseFloat(pick.priceText) * 100); return isFinite(c) && c >= 0 ? c : NaN; }
+    return unitPrice(pick);
+  }
+  function pickSheet() {
+    const p = pick, ice = S.view.settings.icedSurcharge || 0;
+    const it = p.custom ? { temps: ['hot', 'iced'], milk: true } : S.view.menu.items[p.itemId];
+    const unit = pickPrice();
+    const nameOk = !p.custom || p.name.trim().length > 0;
+    const priceOk = !p.custom || (p.priceText.trim() !== '' && !isNaN(unit) && unit <= 5000);
+    let h = '<div class="modal" data-pk="close"><div class="sheet pick" role="dialog" aria-label="' + (p.custom ? 'Custom item' : esc(p.name)) + '">';
+    h += '<div class="pick-hd"><h3>' + (p.custom ? 'Custom item' : esc(p.name)) + '</h3><button class="iconbtn" data-pk="close" aria-label="Close">' + ic('x') + '</button></div>';
+    if (p.custom) {
+      h += '<label class="field">What is it?<input id="pName" type="text" autocomplete="off" autocapitalize="words" maxlength="30" value="' + esc(p.name) + '" placeholder="e.g. Piccolo"></label>';
+      h += '<label class="field">Price per cup <small>(what the guest pays)</small><div class="money"><span>$</span><input id="pPrice" type="text" inputmode="decimal" autocomplete="off" maxlength="6" value="' + esc(p.priceText) + '" placeholder="5.00"></div></label>';
+      if (p.priceText.trim() !== '' && !priceOk) h += '<div class="hint warn-t">Enter a price between $0 and $50.</div>';
+    }
+    if ((it.temps || ['hot']).length > 1) h += '<div class="pick-row"><span class="lbl">Hot or iced</span><div class="seg">' + ['hot', 'iced'].map((t) =>
+      '<button data-pk="temp" data-v="' + t + '" aria-pressed="' + (p.temp === t) + '">' + ic(t === 'hot' ? 'fire' : 'snowflake') + (t === 'hot' ? 'Hot' : 'Iced' + (ice && !p.custom ? ' +$' + C.money(ice) : '')) + '</button>').join('') + '</div></div>';
+    if (it.milk) {
+      const opts = (p.custom ? [{ id: '', name: 'None', surcharge: 0 }] : []).concat(milks());
+      h += '<div class="pick-row"><span class="lbl">Milk</span><div class="seg">' + opts.map((m) =>
+        '<button data-pk="milk" data-v="' + esc(m.id) + '" aria-pressed="' + ((p.milkId || '') === m.id) + '"' + (m.soldOut ? ' disabled' : '') + '>' + esc(m.name) + (m.surcharge && !p.custom ? ' +$' + C.money(m.surcharge) : '') + '</button>').join('') + '</div></div>';
+    }
+    h += '<div class="pick-row"><span class="lbl">Cups</span><div class="qty"><button class="step" data-pk="q" data-v="-1" aria-label="Fewer">' + ic('minus') + '</button><b class="num">' + p.qty + '</b><button class="step" data-pk="q" data-v="1" aria-label="More">' + ic('plus') + '</button></div></div>';
+    const showTotal = !isNaN(unit) && !(p.custom && p.priceText.trim() === '');
+    h += '<button class="btn dark send" data-pk="add"' + (nameOk && priceOk ? '' : ' disabled') + '><span>Add to order</span><span class="num">' + (showTotal ? '$' + C.money(unit * p.qty) : '') + '</span></button>';
+    return h + '</div></div>';
+  }
+  function pickAction(t, e) {
+    if (!pick) return;
+    const d = t.dataset;
+    if (d.pk === 'close') { if (e.target === t || t.tagName === 'BUTTON') { pick = null; render(); } return; }
+    if (d.pk === 'temp') pick.temp = d.v;
+    if (d.pk === 'milk') pick.milkId = d.v || null;
+    if (d.pk === 'q') pick.qty = Math.max(1, Math.min(20, pick.qty + Number(d.v)));
+    if (d.pk === 'add') {
+      if (pick.custom) {
+        const price = pickPrice(); const name = pick.name.trim().slice(0, 30);
+        if (!name || isNaN(price) || price > 5000) return;
+        pushLine({ itemId: 'custom', custom: true, name, price, qty: pick.qty, temp: pick.temp, milkId: pick.milkId });
+        toast(name + ' added');
+      } else pushLine({ itemId: pick.itemId, name: pick.name, qty: pick.qty, temp: pick.temp, milkId: pick.milkId });
+      pick = null; render(); return;
+    }
+    render();
   }
   function placeOrder(pay) {
     const name = draft.name.trim().split(/\s+/)[0].slice(0, 20);
@@ -330,11 +403,11 @@
     const token = rid(16);
     const items = cart.map((l) => {
       const m = l.milkId && S.view.menu.milks[l.milkId];
-      return { itemId: l.itemId, name: S.view.menu.items[l.itemId].name, price: unitPrice(l), qty: l.qty, temp: l.temp, milkId: m ? m.id : null, milkName: m ? m.name : null };
+      return { itemId: l.itemId, name: l.custom ? l.name : S.view.menu.items[l.itemId].name, price: unitPrice(l), qty: l.qty, temp: l.temp, milkId: m ? m.id : null, milkName: m ? m.name : null, custom: !!l.custom };
     });
     const mobile = draft.mobile && draft.consent ? draft.mobile.replace(/\s/g, '') : null;
     const op = dispatch('order.create', { id: uuid(), no, token, station: Number(S.station) || 1, name, mobile, consent: !!mobile, items, pay });
-    cart = []; draft = { name: '', mobile: '', consent: false }; saveCart();
+    cart = []; draft = { name: '', mobile: '', consent: false }; showMobile = false; saveCart();
     const o = S.view.orders[op.payload.id];
     tellParent({ bb: 'order', url: guestUrl(o), no: C.fmtNo(o.no), manual: true });
     showConfirm(o);
@@ -343,7 +416,7 @@
   function showConfirm(o) {
     const url = guestUrl(o);
     modal = '<div class="modal" data-act="closeModal"><div class="sheet">' +
-      '<div class="paid">' + ic('check-circle') + 'Paid $' + C.money(C.orderTotal(o)) + ' by ' + (o.pay === 'card' ? 'card' : 'PayNow') + '</div>' +
+      '<div class="paid">' + ic('check-circle') + 'Sent to bar · $' + C.money(C.orderTotal(o)) + ' on POS (' + (o.pay === 'card' ? 'card' : 'PayNow') + ')</div>' +
       '<div class="mute">Order number</div><div class="big num">' + C.fmtNo(o.no) + '</div>' +
       '<div class="who">' + esc(o.name) + ', ' + esc(C.describeItems(o)) + '</div>' +
       '<div class="qr">' + qrSvg(url) + '</div><div style="font-weight:700;font-size:20px">Scan to follow your order live.<br>We\'ll alert you when it\'s ready.</div><div class="mute" style="font-size:14px">Turn the tablet to the guest. No receipt: they show this page at pickup.</div>' +
@@ -353,6 +426,7 @@
   }
 
   // ---- queue
+  let showDone = false;
   function viewQueue() {
     const day = today();
     const list = orders().filter((o) => ['queued', 'making', 'ready'].includes(o.status)).sort((a, b) => a.createdAt - b.createdAt);
@@ -364,7 +438,11 @@
     const todays = orders().filter((o) => o.day === day && o.status !== 'cancelled');
     const waits = todays.filter((o) => o.times && o.times.ready).map((o) => (o.times.ready - o.createdAt) / 60000);
     const avg = waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null;
-    let h = '<div class="qbar"><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' +
+    const toMake = list.filter((o) => o.status !== 'ready').reduce((a, o) => a + C.orderCups(o), 0);
+    const collectedToday = orders().filter((o) => o.day === day && o.status === 'collected').length;
+    let h = S.role !== 'lead'
+      ? '<div class="qbar simple"><div><h1 class="q-title">Queue</h1><p class="mute">' + toMake + (toMake === 1 ? ' cup' : ' cups') + ' to make · ' + collectedToday + ' collected today</p></div><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button></div><div class="queue">'
+      : '<div class="qbar"><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' +
       '<div class="stats"><div><small>Cups today</small><b class="num">' + todays.reduce((a, o) => a + C.orderCups(o), 0) + '</b></div>' +
       '<div><small>In progress</small><b class="num">' + list.filter((o) => o.status !== 'ready').length + '</b></div>' +
       '<div><small>Avg. order to ready</small><b class="num">' + (avg == null ? '–' : avg + 'm') + '</b></div></div></div>' + pulseHtml(2) + '<div class="queue">';
@@ -390,9 +468,9 @@
     h += '</div>';
     const done = orders().filter((o) => o.day === day && (o.status === 'collected' || o.status === 'cancelled')).sort((a, b) => b.statusAt - a.statusAt).slice(0, 8);
     if (done.length) {
-      h += '<div class="recent"><div class="sect-h"><h3 style="font-size:16px">Recently collected</h3></div><div class="recent-list">' +
+      h += '<div class="recent"><button class="linkbtn" data-act="toggleDone" aria-expanded="' + showDone + '">' + ic(showDone ? 'caret-up' : 'caret-down') + 'Collected today (' + done.length + ')</button>' + (showDone ? '<div class="recent-list">' +
         done.map((o) => '<div class="recent-item"><b class="num">' + C.fmtNo(o.no) + ' <span style="font-weight:650;font-size:16px">' + esc(o.name || '') + '</span></b><small>' + esc(C.describeItems(o)) + '</small><small>' + (o.status === 'cancelled' ? 'Cancelled' : 'Collected') + ' ' + C.sgTime(o.statusAt) + '</small><button class="chip" data-st="ready" data-id="' + o.id + '">' + ic('arrow-counter-clockwise') + 'Back to ready</button></div>').join('') +
-        '</div></div>';
+        '</div>' : '') + '</div>';
     }
     return h;
   }
@@ -688,6 +766,8 @@
   document.addEventListener('input', (e) => {
     const t = e.target;
     if (t.id === 'fName') { draft.name = t.value.replace(/[^\p{L}\p{M}' .-]/gu, ''); saveCart(); refreshPay(); }
+    if (t.id === 'pName' && pick) { pick.name = t.value.replace(/[^\p{L}\p{M}\p{N}' .&+()-]/gu, ''); refreshPay(); }
+    if (t.id === 'pPrice' && pick) { pick.priceText = t.value.replace(/[^\d.]/g, ''); refreshPay(); }
     if (t.id === 'fMobile') { const had = !!draft.mobile; draft.mobile = t.value.replace(/[^\d+ ]/g, ''); saveCart(); if (had !== !!draft.mobile) render(); else refreshPay(); }
   });
   function refreshPay() { const keep = document.activeElement && document.activeElement.id; render(); if (keep) { const el = document.getElementById(keep); if (el) el.focus(); } }
@@ -725,10 +805,12 @@
   });
   document.addEventListener('click', (e) => {
     const k = e.target.closest('[data-key]'); if (k) { pinKey(k.dataset.key); return; }
-    const t = e.target.closest('[data-go],[data-act],[data-add],[data-line],[data-pay],[data-st],[data-more],[data-sold],[data-msold],[data-delitem],[data-delmilk],[data-reprint],[data-call]');
+    const t = e.target.closest('[data-go],[data-act],[data-add],[data-line],[data-pay],[data-st],[data-more],[data-sold],[data-msold],[data-delitem],[data-delmilk],[data-reprint],[data-call],[data-pk],[data-paym]');
     if (!t) return;
     const d = t.dataset;
     if (d.go) { e.preventDefault(); modal = ''; go(d.go); if (d.go === 'board') { chime.ctx || chime(); } return; }
+    if (d.pk) return pickAction(t, e);
+    if (d.paym) { payMethod = d.paym === 'card' ? 'card' : 'paynow'; LS.set('payMethod', payMethod); return render(); }
     if (d.add) return addDrink(d.add);
     if (d.line != null) {
       const l = cart[Number(d.line)]; if (!l) return;
@@ -764,6 +846,9 @@
       case 'stageVoice': Stage.setVoice(!Stage.voice); if (Stage.voice) Stage.speak('Voice call-outs on.'); render(); break;
       case 'stageMic': if (!Stage.mic) Stage.start(true).then((ok) => { toast(ok ? 'Listening to the music' : 'Mic not available'); render(); }); break;
       case 'stageFull': if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
+      case 'send': if (!t.disabled) placeOrder(payMethod); break;
+      case 'showMobile': showMobile = true; render(); { const m = $('#fMobile'); if (m) m.focus(); } break;
+      case 'toggleDone': showDone = !showDone; render(); break;
       case 'clearCart': cart = []; saveCart(); render(); break;
       case 'settings': settingsModal(); break;
       case 'saveSettings': {
