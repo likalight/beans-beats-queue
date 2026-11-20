@@ -11,6 +11,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node test/smoke.js",
+    "test:storage": "node test/storage.js",
+    "test:all": "node test/smoke.js && node test/storage.js",
     "reset-day": "node scripts/reset-day.js"
   },
   "license": "MIT",
@@ -20,5 +22,18 @@
     "jsqr": "^1.4.0",
     "qrcode-generator": "^1.4.4",
     "web-push": "^3.6.7"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/likalight/beans-beats-queue.git"
+  },
+  "keywords": [
+    "queue",
+    "offline-first",
+    "pwa",
+    "web-push",
+    "coffee",
+    "event",
+    "charity"
+  ]
 }

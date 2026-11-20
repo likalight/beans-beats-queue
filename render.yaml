@@ -1,25 +1,32 @@
-# One-click Render Blueprint. Uses the Singapore region and a 1 GB persistent
-# disk for the op log (a disk needs the Starter plan; the free plan works for
-# demos but loses data on restart).
+# Render Blueprint: free production setup.
+#
+#   Render free web service (Singapore)  ->  runs server.js
+#   Upstash Redis free database          ->  durable copy of the op log
+#   GitHub Actions (keepalive.yml)       ->  pings /api/health so it never sleeps
+#
+# Render's free plan has no persistent disk, so without the two UPSTASH_*
+# values the queue resets on every deploy/restart. With them, the server
+# restores everything from Redis on boot. See README > Deploy.
 services:
   - type: web
     name: beans-beats-queue
     runtime: node
     region: singapore
-    plan: starter
+    plan: free
     buildCommand: npm ci --omit=dev
     startCommand: node server.js
     healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: DATA_DIR
-        value: /var/data
       - key: BARISTA_PIN
         sync: false
       - key: LEAD_PIN
         sync: false
-    disk:
-      name: queue-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:general@beansnbeats.com

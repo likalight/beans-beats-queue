@@ -104,7 +104,7 @@
     $('s-ready').className = rank >= 2 ? 'done' : '';
     document.body.className = 'st-' + status + (rank === 2 ? ' ready' : '') + (/\biced\b/.test(items || '') ? ' iced' : ' hot');
     setLevel(LEVEL[status] || 0.1);
-    $('pill').className = 'pill' + (rank >= 2 ? ' on' : '');
+    $('pill').className = 'pill' + (rank >= 2 ? ' on' : ''); $('pill').hidden = rank < 2;
     $('pillTxt').textContent = rank === 3 ? 'Collected. Enjoy!' : 'Ready to collect';
     document.querySelector('meta[name=theme-color]').content = rank === 2 ? '#141212' : '#ffffff';
     $('pickup').classList.toggle('big', rank === 2);
@@ -123,7 +123,7 @@
     $('msg').textContent = msg;
     $('off').hidden = !offline;
     const done = rank >= 3 || rank < 0;
-    $('alertBtn').hidden = done || rank === 2 || alertsOn;
+    renderAlerts(rank);
     $('shareBtn').hidden = rank < 2;
     $('pickup').hidden = done;
     if (d && d.impact) renderImpact(d.impact);
@@ -188,35 +188,123 @@
   });
   window.__bbStory = storyCard; // used by screenshot script
 
-  // ---- alerts: sound + vibration (needs a tap), notifications + Web Push
+  // ---- alerts. Browsers only allow notifications after one tap from the guest,
+  // so the page leads with a big "Turn on notifications" card the moment the
+  // QR is scanned, then falls back to chime + vibration + title flash.
+  //   alertsOn: false | 'push' (OS notification + Web Push) | 'sound' (page must stay open)
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const canNotify = 'Notification' in window && 'serviceWorker' in navigator;
+  const ALERT_KEY = KEY + '.alerts';
+  let lastRank = 0;
+
+  // iPhone only allows web notifications from a home-screen app, so give this
+  // order its own manifest: "Add to Home Screen" then opens straight to it.
+  try { document.querySelector('link[rel=manifest]').href = '/api/manifest/' + token; } catch (e) { /* ignore */ }
+
+  function alertState() {
+    if (alertsOn) return 'on';
+    if (canNotify) return Notification.permission === 'denied' ? 'denied' : 'ask';
+    if (ios && !standalone) return 'ios';
+    return 'sound';
+  }
+  function renderAlerts(rank) {
+    lastRank = rank;
+    const st = alertState();
+    const live = rank >= 0 && rank < 2;
+    $('alerts').hidden = !live || st === 'on';
+    $('alon').hidden = !live || st !== 'on';
+    $('alerts').classList.toggle('warn', st === 'denied');
+    const steps = $('alSteps');
+    $('alertBtn').className = st === 'ios' ? 'btn' : 'btn go';
+    steps.hidden = st !== 'ios';
+    if (st === 'ask') {
+      $('alT').textContent = 'Get a ping when it\'s ready';
+      $('alS').textContent = 'We\'ll notify this phone the moment your drink is up, even if you close this page.';
+      $('alBtnTxt').textContent = 'Turn on notifications';
+    } else if (st === 'denied') {
+      $('alT').textContent = 'Notifications are blocked';
+      $('alS').textContent = 'Keep this page open and it will chime and vibrate instead. To allow them, tap the icon left of the web address, set Notifications to Allow, then reload.';
+      $('alBtnTxt').textContent = 'Turn on sound alert';
+    } else if (st === 'ios') {
+      $('alT').textContent = 'Get a ping on your iPhone';
+      $('alS').textContent = 'iPhone only sends web notifications from apps on your home screen. It takes ten seconds:';
+      steps.innerHTML = '<li>Tap <b>Share</b> <i class="ph-bold ph-export"></i> at the bottom of Safari</li><li>Tap <b>Add to Home Screen</b>, then <b>Add</b></li><li>Open <b>B&amp;B order</b> from your home screen and tap <b>Turn on notifications</b></li>';
+      $('alBtnTxt').textContent = 'Use a sound alert instead';
+    } else if (st === 'sound') {
+      $('alT').textContent = 'Get a sound alert';
+      $('alS').textContent = 'This browser can\'t show notifications. Keep this page open and it will chime and vibrate when your drink is ready.';
+      $('alBtnTxt').textContent = 'Turn on sound alert';
+    } else {
+      $('alonTxt').textContent = alertsOn === 'push' ? 'Notifications on. We\'ll buzz you when it\'s ready.' : 'Sound alert on. Keep this page open.';
+    }
+  }
+
   function b64ToU8(b64) { const p = '='.repeat((4 - b64.length % 4) % 4); const raw = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); }
+  function unlockAudio() {
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); return true; } catch (e) { return false; }
+  }
+  // Any tap on the page unlocks sound, so even guests who skip the card get a chime.
+  document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+  let wake = null;
+  async function keepAwake() { try { if (navigator.wakeLock && !document.hidden) wake = await navigator.wakeLock.request('screen'); } catch (e) { /* optional */ } }
+  document.addEventListener('visibilitychange', () => { if (alertsOn === 'sound' && !document.hidden) keepAwake(); });
+
+  async function subscribePush() {
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.pushManager) return false;
+    const { key } = await (await fetch('/api/vapid')).json();
+    if (!key) return false;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+    const r = await fetch('/api/push/' + token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
+    return r.ok;
+  }
+  function setOn(mode) {
+    alertsOn = mode;
+    try { localStorage.setItem(ALERT_KEY, mode); } catch (e) { /* ignore */ }
+    renderAlerts(lastRank);
+  }
+
   $('alertBtn').addEventListener('click', async () => {
-    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); chime(1); } catch (e) { /* no audio */ }
+    unlockAudio(); chime(1);
     if (navigator.vibrate) navigator.vibrate(80);
-    try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) { /* optional */ }
-    let note = 'Sound alert on. Keep this page open.';
-    try {
-      if ('Notification' in window && 'serviceWorker' in navigator) {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
-          note = 'Alerts on. We will notify you even if you switch apps.';
-          const reg = await navigator.serviceWorker.ready;
-          if (reg.pushManager) {
-            const { key } = await (await fetch('/api/vapid')).json();
-            if (key) {
-              const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
-              await fetch('/api/push/' + token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
-            }
-          }
-        }
-      } else if (/iPhone|iPad/.test(navigator.userAgent)) {
-        note = 'On iPhone, keep this page open: it will chime and turn dark when your drink is ready. (For lock-screen alerts, Share → Add to Home Screen.)';
+    keepAwake();
+    const st = alertState();
+    if (st === 'ask') {
+      $('alBtnTxt').textContent = 'Allow it in the pop-up…';
+      let perm = 'default';
+      try { perm = await Notification.requestPermission(); } catch (e) { /* old Safari */ }
+      if (perm === 'granted') {
+        setOn('push');
+        try { await subscribePush(); } catch (e) { /* page alerts still work while open */ }
+        return;
       }
-    } catch (e) { /* push optional: polling + sound still work */ }
-    alertsOn = true; $('alertBtn').hidden = true; $('alertNote').textContent = note;
+      if (perm === 'denied') { renderAlerts(lastRank); return; }
+      $('alBtnTxt').textContent = 'Turn on notifications'; // dismissed: let them try again
+      return;
+    }
+    setOn('sound');
+  });
+  $('testBtn').addEventListener('click', async () => {
+    unlockAudio(); chime(1);
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    if (alertsOn === 'push') {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('This is how we\'ll tell you', { body: 'You\'ll get one of these when your drink is ready.', tag: 'test-' + token, icon: '/icons/icon.svg' });
+      } catch (e) { /* ignore */ }
+    }
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // Permission already granted (reload, second order, home-screen app): turn
+  // alerts on silently, no tap needed.
+  if (canNotify && Notification.permission === 'granted') {
+    alertsOn = 'push';
+    subscribePush().catch(() => {});
+  } else {
+    try { if (localStorage.getItem(ALERT_KEY) === 'sound') alertsOn = 'sound'; } catch (e) { /* ignore */ }
+  }
   render(last, false);
   poll();
 })();

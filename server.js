@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 const Core = require('./public/shared/core.js');
 const seedMenu = require('./seed-menu.js');
+const store = require('./store.js');
 
 let webpush = null;
 try { webpush = require('web-push'); } catch (e) { console.warn('web-push not installed; push alerts disabled'); }
@@ -23,6 +24,8 @@ const BARISTA_PIN = String(process.env.BARISTA_PIN || '1111');
 const LEAD_PIN = String(process.env.LEAD_PIN || '9999');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 fs.mkdirSync(DATA_DIR, { recursive: true });
+// Free hosts wipe the disk on restart: pull the durable copy back first (no-op without Upstash env vars).
+if (store.enabled) console.log('storage: ' + store.hydrateSync(DATA_DIR));
 
 const OPS_FILE = path.join(DATA_DIR, 'ops.ndjson');
 const SECRETS_FILE = path.join(DATA_DIR, 'secrets.json');
@@ -30,7 +33,7 @@ const PUSH_FILE = path.join(DATA_DIR, 'push.json');
 const EPOCH_FILE = path.join(DATA_DIR, 'epoch.txt');
 // The epoch changes whenever the op log is wiped (full reset), so tablets know
 // to throw away their cached copy instead of waiting for ops that never come.
-if (!fs.existsSync(OPS_FILE) || !fs.existsSync(EPOCH_FILE)) fs.writeFileSync(EPOCH_FILE, crypto.randomBytes(6).toString('hex'));
+if (!fs.existsSync(OPS_FILE) || !fs.existsSync(EPOCH_FILE)) { fs.writeFileSync(EPOCH_FILE, crypto.randomBytes(6).toString('hex')); store.setEpoch(fs.readFileSync(EPOCH_FILE, 'utf8')); }
 const EPOCH = fs.readFileSync(EPOCH_FILE, 'utf8').trim();
 
 // ---------- secrets (token signing + VAPID), generated once and persisted ----------
@@ -38,7 +41,9 @@ let secrets = {};
 try { secrets = JSON.parse(fs.readFileSync(SECRETS_FILE, 'utf8')); } catch (e) { /* first boot */ }
 if (!secrets.hmac) secrets.hmac = crypto.randomBytes(32).toString('hex');
 if (webpush && !secrets.vapid) secrets.vapid = webpush.generateVAPIDKeys();
-fs.writeFileSync(SECRETS_FILE, JSON.stringify(secrets, null, 2));
+const secretsJson = JSON.stringify(secrets, null, 2);
+let secretsOnDisk = ''; try { secretsOnDisk = fs.readFileSync(SECRETS_FILE, 'utf8'); } catch (e) { /* first boot */ }
+if (secretsJson !== secretsOnDisk) { fs.writeFileSync(SECRETS_FILE, secretsJson); store.setSecrets(secretsJson); }
 const HMAC = process.env.SESSION_SECRET || secrets.hmac;
 const VAPID = process.env.VAPID_PUBLIC_KEY
   ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
@@ -67,7 +72,7 @@ function loadLog() {
   }
 }
 
-function persist(op) { fs.appendFileSync(OPS_FILE, JSON.stringify(op) + '\n'); }
+function persist(op) { const line = JSON.stringify(op); fs.appendFileSync(OPS_FILE, line + '\n'); store.appendOp(line); }
 
 function commit(op) {
   if (seen.has(op.opId)) return null;
@@ -82,6 +87,7 @@ function commit(op) {
   if (changed && op.type === 'order.status') {
     const o = state.orders[op.payload.id];
     if (o.status === 'ready' && before !== 'ready') notifyReady(o);
+    if (o.status === 'making' && before !== 'making') notifyMaking(o);
     if (o.status === 'collected' || o.status === 'cancelled') { if (pushSubs[o.token]) { delete pushSubs[o.token]; savePush(); } }
   }
   return entry;
@@ -100,8 +106,10 @@ function scrubPII() {
     return Object.assign({}, op, { payload });
   });
   const tmp = OPS_FILE + '.tmp';
-  fs.writeFileSync(tmp, log.map((o) => JSON.stringify(o)).join('\n') + (log.length ? '\n' : ''));
+  const lines = log.map((o) => JSON.stringify(o));
+  fs.writeFileSync(tmp, lines.join('\n') + (log.length ? '\n' : ''));
   fs.renameSync(tmp, OPS_FILE);
+  store.replaceOps(lines);
   for (const t in pushSubs) {
     const o = Object.values(state.orders).find((x) => x.token === t);
     if (!o || o.name == null) delete pushSubs[t];
@@ -114,18 +122,23 @@ setInterval(() => { if (dirtyPII) scrubPII(); }, 10 * 60 * 1000).unref();
 // ---------- push subscriptions (token -> [subscription]) ----------
 let pushSubs = {};
 try { pushSubs = JSON.parse(fs.readFileSync(PUSH_FILE, 'utf8')); } catch (e) { pushSubs = {}; }
-function savePush() { fs.writeFileSync(PUSH_FILE, JSON.stringify(pushSubs)); }
+function savePush() { const j = JSON.stringify(pushSubs); fs.writeFileSync(PUSH_FILE, j); store.setPush(j); }
 function notifyReady(o) {
+  pushTo(o, { title: 'Order ' + Core.fmtNo(o.no) + ' is ready',
+    body: (o.name ? o.name + ', y' : 'Y') + 'our drink is ready. Pick it up at the Beans&Beats counter.', sticky: true }, { TTL: 600, urgency: 'high' });
+}
+// A softer heads-up when the barista starts the drink, so guests drift back
+// to the counter. Same tag, so the "ready" alert replaces it on the lock screen.
+function notifyMaking(o) {
+  pushTo(o, { title: 'Order ' + Core.fmtNo(o.no) + ' is being made',
+    body: 'Your barista just started on it. Head back to the counter in a minute or two.', sticky: false }, { TTL: 300, urgency: 'normal' });
+}
+function pushTo(o, msg, opts) {
   const subs = pushSubs[o.token];
   if (!webpush || !subs || !subs.length) return;
-  const body = JSON.stringify({
-    title: 'Order ' + Core.fmtNo(o.no) + ' is ready',
-    body: (o.name ? o.name + ', y' : 'Y') + 'our drink is ready. Pick it up at the Beans&Beats counter.',
-    url: '/o/' + o.token,
-    tag: 'order-' + o.token,
-  });
+  const body = JSON.stringify(Object.assign({ url: '/o/' + o.token, tag: 'order-' + o.token }, msg));
   for (const sub of subs) {
-    webpush.sendNotification(sub, body, { TTL: 600, urgency: 'high' }).catch((err) => {
+    webpush.sendNotification(sub, body, opts).catch((err) => {
       if (err.statusCode === 404 || err.statusCode === 410) {
         pushSubs[o.token] = (pushSubs[o.token] || []).filter((s) => s.endpoint !== sub.endpoint); savePush();
       }
@@ -239,7 +252,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   try {
-    if (p === '/api/health') return send(res, 200, { ok: true, seq, orders: Object.keys(state.orders).length });
+    if (p === '/api/health') return send(res, 200, { ok: true, seq, orders: Object.keys(state.orders).length, storage: store.enabled ? 'redis' : 'disk', pending: store.pending(), uptime: Math.round(process.uptime()) });
 
     if (p === '/api/login' && req.method === 'POST') {
       const { pin } = await readBody(req, 1e3);
@@ -307,6 +320,11 @@ const server = http.createServer(async (req, res) => {
       const milks = Object.values(state.menu.milks).filter((m) => !m.deleted).map((m) => ({ name: m.name, surcharge: m.surcharge || 0, soldOut: !!m.soldOut }));
       return send(res, 200, { items, milks, icedSurcharge: state.settings.icedSurcharge || 0 });
     }
+    if ((m = p.match(/^\/api\/manifest\/([A-Za-z0-9_-]{16,64})$/))) {
+      return send(res, 200, { name: 'beans&beats order', short_name: 'B&B order', id: '/o/' + m[1], start_url: '/o/' + m[1], scope: '/o/',
+        display: 'standalone', background_color: '#ffffff', theme_color: '#0a0a0a',
+        icons: [{ src: '/icons/icon.svg', sizes: 'any', type: 'image/svg+xml' }, { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }] }, 'application/manifest+json');
+    }
     if (p === '/api/vapid') return send(res, 200, { key: VAPID ? VAPID.publicKey : null });
 
     if (p === '/api/report.csv' || p === '/api/days.csv') {
@@ -342,8 +360,18 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log('Beans&Beats queue on http://localhost:' + PORT + '  (data: ' + DATA_DIR + ')');
+  console.log('Beans&Beats queue on http://localhost:' + PORT + '  (data: ' + DATA_DIR + (store.enabled ? ', mirrored to Upstash Redis' : '') + ')');
   if (!process.env.BARISTA_PIN || !process.env.LEAD_PIN) console.log('Using default PINs barista=1111 lead=9999. Set BARISTA_PIN / LEAD_PIN in production.');
 });
+
+// Deploys and restarts send SIGTERM: stop taking requests, flush the Redis mirror, exit.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    server.close();
+    for (const res of streams) res.end();
+    if (store.enabled) await store.flush(8000);
+    process.exit(0);
+  });
+}
 
 module.exports = { server, state };

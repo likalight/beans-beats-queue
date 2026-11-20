@@ -421,7 +421,7 @@
       '<div class="paid">' + ic('check-circle') + 'Sent to bar · $' + C.money(C.orderTotal(o)) + ' on POS (' + (o.pay === 'card' ? 'card' : 'PayNow') + ')</div>' +
       '<div class="mute">Order number</div><div class="big num">' + C.fmtNo(o.no) + '</div>' +
       '<div class="who">' + esc(o.name) + ', ' + esc(C.describeItems(o)) + '</div>' +
-      '<div class="qr">' + qrSvg(url) + '</div><div style="font-weight:700;font-size:20px">Scan to follow your order live.<br>We\'ll alert you when it\'s ready.</div><div class="mute" style="font-size:14px">Turn the tablet to the guest. No receipt: they show this page at pickup.</div>' +
+      '<div class="qr">' + qrSvg(url) + '</div><div style="font-weight:700;font-size:20px">Scan to follow your order.<br>Tap <span style="color:var(--go,#fa6105)">Turn on notifications</span> and we\'ll buzz your phone.</div><div class="mute" style="font-size:14px">Turn the tablet to the guest. No receipt: they show that page at pickup.</div>' +
       '<button class="btn dark" data-act="closeModal">' + ic('arrow-right') + 'Next order</button></div></div>';
     render();
     clearTimeout(modalTimer); modalTimer = setTimeout(() => { modal = ''; render(); }, 45000);

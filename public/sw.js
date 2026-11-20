@@ -1,6 +1,6 @@
 /* Service worker: keeps the app shell available with no network and shows
  * Web Push "your drink is ready" notifications. API calls are never cached. */
-const VERSION = 'bb-v4';
+const VERSION = 'bb-v5';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/shared/core.js', '/vendor/qrcode.js', '/vendor/jsqr.js',
   '/guest.html', '/guest.js', '/menu.html', '/manifest.webmanifest', '/guest.webmanifest', '/icons/icon.svg',
   '/vendor/fonts/archivo.woff2', '/vendor/ph/bold/style.css', '/vendor/ph/bold/Phosphor-Bold.woff2',
@@ -38,7 +38,7 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data.json(); } catch (err) { d = { title: 'Your drink is ready', body: 'Pick it up at the Beans&Beats counter.' }; }
   e.waitUntil(self.registration.showNotification(d.title || 'Your drink is ready', {
-    body: d.body, tag: d.tag, renotify: true, requireInteraction: true, vibrate: [400, 150, 400, 150, 800],
+    body: d.body, tag: d.tag, renotify: true, requireInteraction: d.sticky !== false, vibrate: [400, 150, 400, 150, 800],
     icon: '/icons/icon.svg', badge: '/icons/icon.svg', data: { url: d.url || '/' },
   }));
 });

@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: for f in server.js store.js seed-menu.js public/app.js public/guest.js public/sw.js public/shared/core.js scripts/*.js; do node --check "$f"; done
+      - name: Smoke test (sync, idempotency, LWW, guest tracking, CSV, PDPA wipe)
+        run: npm test
+      - name: Storage test (restart on a wiped disk, restore from Redis)
+        run: npm run test:storage

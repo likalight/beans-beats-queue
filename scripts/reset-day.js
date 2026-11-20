@@ -40,7 +40,10 @@ const val = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : nu
         console.log('moved', f, '->', path.basename(backup));
       }
     }
-    fs.writeFileSync(path.join(dir, 'epoch.txt'), crypto.randomBytes(6).toString('hex'));
+    const epoch = crypto.randomBytes(6).toString('hex');
+    fs.writeFileSync(path.join(dir, 'epoch.txt'), epoch);
+    const store = require('../store.js');
+    if (store.enabled) { await store.wipe(epoch); console.log('cleared orders in Upstash Redis (secrets kept)'); }
     console.log('Done. Start the server: the menu is re-seeded and tablets resync automatically.');
     console.log('Backups (.bak-*) still contain guest names: delete them once you no longer need them.');
     return;
