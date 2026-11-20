@@ -168,6 +168,8 @@
   function menuItems() { return Object.values(S.view.menu.items).filter((i) => !i.deleted).sort((a, b) => (a.sort || 0) - (b.sort || 0) || a.name.localeCompare(b.name)); }
   function milks() { return Object.values(S.view.menu.milks).filter((i) => !i.deleted).sort((a, b) => (a.sort || 0) - (b.sort || 0)); }
   function ageMin(ts) { return Math.max(0, Math.floor((now() - ts) / 60000)); }
+  // 7m, 1h 05m, 2d: long waits stay readable instead of showing thousands of minutes.
+  function fmtAge(m) { return m < 60 ? m + 'm' : m < 1440 ? Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm' : Math.floor(m / 1440) + 'd'; }
   function toast(msg) {
     const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = ic('check-circle') + esc(msg); document.body.appendChild(t);
     setTimeout(() => t.remove(), 2600);
@@ -455,7 +457,7 @@
         const age = ageMin(o.createdAt);
         const since = ageMin(o.statusAt);
         h += '<article class="card ' + o.status + '"><div class="hd"><span class="no num">' + C.fmtNo(o.no) + '</span><span class="nm">' + esc(o.name || '—') + '</span>' +
-          '<span class="age num' + (age >= 10 && o.status !== 'ready' ? ' late' : '') + (o.status === 'ready' && since >= 10 ? ' late' : '') + '">' + ic('clock') + (o.status === 'ready' ? since + 'm waiting' : age + 'm') + '</span></div>' +
+          '<span class="age num' + (age >= 10 && o.status !== 'ready' ? ' late' : '') + (o.status === 'ready' && since >= 10 ? ' late' : '') + '">' + ic('clock') + (o.status === 'ready' ? fmtAge(since) + ' waiting' : fmtAge(age)) + '</span></div>' +
           '<ul>' + o.items.map((it) => '<li>' + lineDesc(it) + '</li>').join('') + '</ul>' +
           (o.mobile && o.status === 'ready' && since >= 5 ? '<div style="font-size:13px">Mobile on file: ' + esc(o.mobile.replace(/.(?=.{4})/g, '•')) + ' <button class="chip" data-call="' + o.id + '">Show</button></div>' : '') +
           (S.pendingIds.has(o.id) ? '<div class="pending-sync">' + ic('cloud-arrow-up') + 'Saved on this tablet, syncing</div>' : '') +
