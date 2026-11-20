@@ -197,12 +197,14 @@
   const canNotify = 'Notification' in window && 'serviceWorker' in navigator;
   const ALERT_KEY = KEY + '.alerts';
   let lastRank = 0;
+  let pushError = ''; // why lock-screen alerts couldn't be set up, shown to the guest
 
   // iPhone only allows web notifications from a home-screen app, so give this
   // order its own manifest: "Add to Home Screen" then opens straight to it.
   try { document.querySelector('link[rel=manifest]').href = '/api/manifest/' + token; } catch (e) { /* ignore */ }
 
   function alertState() {
+    if (pushError) return 'failed';
     if (alertsOn) return 'on';
     if (canNotify) return Notification.permission === 'denied' ? 'denied' : 'ask';
     if (ios && !standalone) return 'ios';
@@ -214,7 +216,7 @@
     const live = rank >= 0 && rank < 2;
     $('alerts').hidden = !live || st === 'on';
     $('alon').hidden = !live || st !== 'on';
-    $('alerts').classList.toggle('warn', st === 'denied');
+    $('alerts').classList.toggle('warn', st === 'denied' || st === 'failed');
     const steps = $('alSteps');
     $('alertBtn').className = st === 'ios' ? 'btn' : 'btn go';
     steps.hidden = st !== 'ios';
@@ -222,6 +224,10 @@
       $('alT').textContent = 'Get a ping when it\'s ready';
       $('alS').textContent = 'We\'ll notify this phone the moment your drink is up, even if you close this page.';
       $('alBtnTxt').textContent = 'Turn on notifications';
+    } else if (st === 'failed') {
+      $('alT').textContent = 'Lock-screen alerts didn\'t connect';
+      $('alS').textContent = 'Keep this page open for now: it will chime and vibrate when your drink is ready. (' + pushError + ')';
+      $('alBtnTxt').textContent = 'Try again';
     } else if (st === 'denied') {
       $('alT').textContent = 'Notifications are blocked';
       $('alS').textContent = 'Keep this page open and it will chime and vibrate instead. To allow them, tap the icon left of the web address, set Notifications to Allow, then reload.';
@@ -250,14 +256,34 @@
   async function keepAwake() { try { if (navigator.wakeLock && !document.hidden) wake = await navigator.wakeLock.request('screen'); } catch (e) { /* optional */ } }
   document.addEventListener('visibilitychange', () => { if (alertsOn === 'sound' && !document.hidden) keepAwake(); });
 
+  function sameKey(a, b) { if (!a || a.byteLength !== b.byteLength) return false; const x = new Uint8Array(a); for (let i = 0; i < x.length; i++) if (x[i] !== b[i]) return false; return true; }
+  function withTimeout(p, ms, what) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' timed out')), ms))]); }
+  // Registers this phone with the browser's push service and hands the
+  // subscription to our server. Throws with a short reason on failure, so the
+  // page never claims "Notifications on" unless the server really has it.
   async function subscribePush() {
-    const reg = await navigator.serviceWorker.ready;
-    if (!reg.pushManager) return false;
-    const { key } = await (await fetch('/api/vapid')).json();
-    if (!key) return false;
-    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+    if (!('PushManager' in window)) throw new Error('no push support in this browser');
+    const reg = await withTimeout(navigator.serviceWorker.ready, 8000, 'service worker');
+    const res = await fetch('/api/vapid', { cache: 'no-store' });
+    const { key } = await res.json();
+    if (!key) throw new Error('server has no push key');
+    const appKey = b64ToU8(key);
+    let sub = await reg.pushManager.getSubscription();
+    // A subscription made against an older server key can never receive our pushes.
+    if (sub && !sameKey(sub.options && sub.options.applicationServerKey, appKey)) { try { await sub.unsubscribe(); } catch (e) { /* ignore */ } sub = null; }
+    if (!sub) {
+      const opts = { userVisibleOnly: true, applicationServerKey: appKey };
+      try { sub = await withTimeout(reg.pushManager.subscribe(opts), 15000, 'push service'); }
+      catch (e) { await new Promise((r) => setTimeout(r, 1200)); sub = await withTimeout(reg.pushManager.subscribe(opts), 15000, 'push service'); }
+    }
     const r = await fetch('/api/push/' + token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
-    return r.ok;
+    if (!r.ok) throw new Error('server said ' + r.status);
+    return true;
+  }
+  async function connectPush() {
+    $('alBtnTxt').textContent = 'Connecting…';
+    try { await subscribePush(); pushError = ''; setOn('push'); }
+    catch (e) { pushError = (e && (e.message || e.name)) || 'unknown error'; alertsOn = 'sound'; renderAlerts(lastRank); }
   }
   function setOn(mode) {
     alertsOn = mode;
@@ -270,15 +296,12 @@
     if (navigator.vibrate) navigator.vibrate(80);
     keepAwake();
     const st = alertState();
+    if (st === 'failed') { await connectPush(); return; }
     if (st === 'ask') {
       $('alBtnTxt').textContent = 'Allow it in the pop-up…';
       let perm = 'default';
       try { perm = await Notification.requestPermission(); } catch (e) { /* old Safari */ }
-      if (perm === 'granted') {
-        setOn('push');
-        try { await subscribePush(); } catch (e) { /* page alerts still work while open */ }
-        return;
-      }
+      if (perm === 'granted') { await connectPush(); return; }
       if (perm === 'denied') { renderAlerts(lastRank); return; }
       $('alBtnTxt').textContent = 'Turn on notifications'; // dismissed: let them try again
       return;
@@ -288,12 +311,15 @@
   $('testBtn').addEventListener('click', async () => {
     unlockAudio(); chime(1);
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    if (alertsOn === 'push') {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification('This is how we\'ll tell you', { body: 'You\'ll get one of these when your drink is ready.', tag: 'test-' + token, icon: '/icons/icon.svg' });
-      } catch (e) { /* ignore */ }
-    }
+    if (alertsOn !== 'push') return;
+    // A real push from the server, so locking the phone right after proves the lock-screen path.
+    $('testBtn').textContent = 'Sending…';
+    try {
+      const r = await fetch('/api/push/' + token + '/test', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      $('alonTxt').textContent = r.ok && d.sent ? 'Test sent. Lock your phone now: it should buzz in a few seconds.' : 'Test failed (' + (d.error || r.status) + '). Tap Test again, or keep this page open.';
+    } catch (e) { $('alonTxt').textContent = 'No connection. Try again in a moment.'; }
+    $('testBtn').textContent = 'Test';
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -301,7 +327,7 @@
   // alerts on silently, no tap needed.
   if (canNotify && Notification.permission === 'granted') {
     alertsOn = 'push';
-    subscribePush().catch(() => {});
+    subscribePush().catch((e) => { pushError = (e && e.message) || 'unknown error'; alertsOn = 'sound'; renderAlerts(lastRank); });
   } else {
     try { if (localStorage.getItem(ALERT_KEY) === 'sound') alertsOn = 'sound'; } catch (e) { /* ignore */ }
   }

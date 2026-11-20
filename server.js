@@ -135,16 +135,22 @@ function notifyMaking(o) {
 }
 function pushTo(o, msg, opts) {
   const subs = pushSubs[o.token];
-  if (!webpush || !subs || !subs.length) return;
+  if (!webpush || !subs || !subs.length) return 0;
   const body = JSON.stringify(Object.assign({ url: '/o/' + o.token, tag: 'order-' + o.token }, msg));
   for (const sub of subs) {
-    webpush.sendNotification(sub, body, opts).catch((err) => {
+    let host = '?'; try { host = new URL(sub.endpoint).host; } catch (e) { /* ignore */ }
+    webpush.sendNotification(sub, body, opts).then((r) => {
+      console.log('push ' + Core.fmtNo(o.no) + ' "' + msg.title + '" -> ' + host + ' ' + r.statusCode);
+    }, (err) => {
+      console.warn('push ' + Core.fmtNo(o.no) + ' -> ' + host + ' failed ' + (err.statusCode || '') + ' ' + String(err.body || err.message || '').slice(0, 200));
       if (err.statusCode === 404 || err.statusCode === 410) {
         pushSubs[o.token] = (pushSubs[o.token] || []).filter((s) => s.endpoint !== sub.endpoint); savePush();
       }
     });
   }
+  return subs.length;
 }
+const lastTest = new Map(); // token -> time of last test push (rate limit)
 
 // ---------- seed menu on first boot ----------
 loadLog();
@@ -302,6 +308,18 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, publicOrder(o));
     }
 
+    // Guest's "Test" button: a real push through the push service, so locking
+    // the phone right after proves lock-screen delivery. One per 10 s per order.
+    if ((m = p.match(/^\/api\/push\/([A-Za-z0-9_-]{16,64})\/test$/)) && req.method === 'POST') {
+      const o = Object.values(state.orders).find((x) => x.token === m[1]);
+      if (!o) return send(res, 404, { error: 'unknown order' });
+      if (Date.now() - (lastTest.get(m[1]) || 0) < 10000) return send(res, 429, { error: 'wait a few seconds' });
+      lastTest.set(m[1], Date.now());
+      const sent = pushTo(o, { title: 'Test from beans&beats', body: 'Lock-screen alerts work. We\'ll send one like this when order ' + Core.fmtNo(o.no) + ' is ready.', sticky: false, tag: 'test-' + o.token }, { TTL: 120, urgency: 'high' });
+      if (!sent) return send(res, 409, { error: 'phone not registered for push' });
+      return send(res, 200, { sent });
+    }
+
     if ((m = p.match(/^\/api\/push\/([A-Za-z0-9_-]{16,64})$/)) && req.method === 'POST') {
       const sub = await readBody(req, 5e3);
       if (!sub || typeof sub.endpoint !== 'string' || !/^https:\/\//.test(sub.endpoint)) return send(res, 400, { error: 'bad sub' });
@@ -309,6 +327,8 @@ const server = http.createServer(async (req, res) => {
       list.push({ endpoint: sub.endpoint, keys: sub.keys });
       pushSubs[m[1]] = list.slice(-3);
       savePush();
+      let host = '?'; try { host = new URL(sub.endpoint).host; } catch (e) { /* ignore */ }
+      console.log('push subscribed -> ' + host);
       const o = Object.values(state.orders).find((x) => x.token === m[1]);
       if (o && o.status === 'ready') notifyReady(o); // subscribed late but already ready
       return send(res, 200, { ok: true });
