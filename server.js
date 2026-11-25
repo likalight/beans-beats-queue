@@ -233,9 +233,14 @@ function publicOrder(o) {
     ? Object.values(state.orders).filter((x) => (x.status === 'queued' || x.status === 'making') && x.createdAt < o.createdAt).length
     : 0;
   const t = Date.now();
-  const imp = Core.impact(state, t);
+  const booth = Core.boothSettings(state);
+  let impact = null;
+  if (booth.showDonation) {
+    const { cups, total, goal } = Core.impact(state, t);
+    impact = { cups, total, goal };
+  }
   return { no: Core.fmtNo(o.no), name: o.name, items: Core.describeItems(o), cups: Core.orderCups(o), status: o.status, times: o.times, ahead,
-    etaMs: Core.eta(state, o, t), impact: { cups: imp.cups, total: imp.total, goal: imp.goal }, now: t };
+    etaMs: Core.eta(state, o, t), booth, impact, now: t };
 }
 // Ops the server is willing to accept from a client of a given role.
 function validOp(op, role) {
@@ -249,6 +254,14 @@ function validOp(op, role) {
     if (!Array.isArray(p.items) || !p.items.length || p.items.length > 20) return false;
     if (p.mobile && !/^\+?\d{8,15}$/.test(String(p.mobile).replace(/\s/g, ''))) p.mobile = null;
     if (p.mobile && !p.consent) p.mobile = null; // PDPA: no consent, no mobile
+  }
+  if (op.type === 'settings.update') {
+    const p = op.payload;
+    for (const key of ['pickupScan', 'showDonation', 'showDonationGoal']) {
+      if (key in p && typeof p[key] !== 'boolean') return false;
+    }
+    if ('donationName' in p && (typeof p.donationName !== 'string' || !p.donationName.trim() || p.donationName.length > 120)) return false;
+    if ('goal' in p && (!Number.isSafeInteger(p.goal) || p.goal < 1)) return false;
   }
   return true;
 }
@@ -338,7 +351,8 @@ const server = http.createServer(async (req, res) => {
       const items = Object.values(state.menu.items).filter((i) => !i.deleted).sort((a, b) => (a.sort || 0) - (b.sort || 0))
         .map((i) => ({ name: i.name, price: i.price, temps: i.temps, milk: i.milk, soldOut: !!i.soldOut }));
       const milks = Object.values(state.menu.milks).filter((m) => !m.deleted).map((m) => ({ name: m.name, surcharge: m.surcharge || 0, soldOut: !!m.soldOut }));
-      return send(res, 200, { items, milks, icedSurcharge: state.settings.icedSurcharge || 0 });
+      const { showDonation, donationName } = Core.boothSettings(state);
+      return send(res, 200, { items, milks, icedSurcharge: state.settings.icedSurcharge || 0, showDonation, donationName });
     }
     if ((m = p.match(/^\/api\/manifest\/([A-Za-z0-9_-]{16,64})$/))) {
       return send(res, 200, { name: 'beans&beats order', short_name: 'B&B order', id: '/o/' + m[1], start_url: '/o/' + m[1], scope: '/o/',

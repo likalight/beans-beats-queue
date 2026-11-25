@@ -97,7 +97,7 @@
       applyServerOps(r.ops);
       S.clockSkew = Math.abs(r.now - Date.now()) > 5000 ? r.now - Date.now() : 0;
       S.online = true; S.lastOk = Date.now();
-      save(); rebuild(); render();
+      save(); rebuild(); renderSynced();
       ensureStream();
       if (S.outbox.length) syncSoon(100);
     } catch (e) {
@@ -113,7 +113,7 @@
       const gap = ops.length && ops[0].seq > S.seq + 1;
       applyServerOps(ops);
       S.online = true; S.lastOk = Date.now();
-      save(); rebuild(); render();
+      save(); rebuild(); renderSynced();
       if (gap) syncSoon(0);
     });
     es.addEventListener('hello', (ev) => { const d = JSON.parse(ev.data); if (d.seq > S.seq) syncSoon(0); });
@@ -155,8 +155,7 @@
   // ------------------------------------------------------------------ routing
   const TABS = [
     { id: 'order', label: 'Order', icon: 'coffee' }, { id: 'queue', label: 'Queue', icon: 'list-checks' },
-    { id: 'board', label: 'Ready board', icon: 'television-simple' }, { id: 'display', label: 'Guest display', icon: 'qr-code' },
-    { id: 'menu', label: 'Menu', icon: 'sliders-horizontal', lead: true }, { id: 'report', label: 'Sales', icon: 'chart-bar', lead: true },
+    { id: 'menu', label: 'Menu & setup', icon: 'sliders-horizontal', lead: true }, { id: 'report', label: 'Sales', icon: 'chart-bar', lead: true },
   ];
   let route = location.pathname.replace(/^\//, '') || 'order';
   function go(r) { route = r; history.pushState(null, '', '/' + r + location.search); render(); }
@@ -218,7 +217,7 @@
     else if (route === 'report') body = viewReport();
     $app.innerHTML =
       '<header class="top"><div class="brand"><img src="/brand/mark-ink.png" alt="beans&amp;beats"><span>beans&amp;beats</span></div><nav class="tabs">' +
-      TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '" class="' + (route === t.id ? 'on' : '') + '" title="' + t.label + '">' + ic(t.icon) + '<span>' + t.label + '</span></a>').join('') +
+      TABS.filter((t) => !t.lead || S.role === 'lead').map((t) => '<a href="/' + t.id + '" data-go="' + t.id + '"' + (route === t.id ? ' aria-current="page"' : '') + ' title="' + t.label + '">' + ic(t.icon) + '<span>' + t.label + '</span></a>').join('') +
       '</nav><div id="net"></div><button class="iconbtn" data-act="settings" title="Device settings" aria-label="Device settings">' + ic('gear-six') + '</button></header>' +
       '<main>' + body + '</main>' + (pick && route === 'order' ? pickSheet() : (modal || ''));
     renderNet();
@@ -230,8 +229,16 @@
     const el = document.getElementById('net'); if (!el) return;
     const n = S.outbox.length;
     const off = !S.online || S.simOffline;
-    el.className = 'net' + (off ? ' off' : n ? ' pend' : '');
-    el.innerHTML = ic(off ? 'wifi-slash' : n ? 'arrows-clockwise' : 'wifi-high') + (S.simOffline ? 'Wifi drop (simulated)' : off ? 'Offline' : 'Live') + (n ? ' · ' + n + ' to sync' : off ? ', saved on device' : '');
+    const publicScreen = route === 'board' || route === 'display';
+    el.className = 'net' + (!off && (!n || publicScreen) ? ' hidden' : off ? ' off' : ' pend');
+    el.setAttribute('role', 'status');
+    el.innerHTML = publicScreen ? 'Orders may be out of date. Check with the counter.' : ic(off ? 'wifi-slash' : 'arrows-clockwise') + (off ? 'Offline · saved on this device' : 'Syncing') + (n ? ' · ' + n + ' pending' : '');
+  }
+  function renderSynced() {
+    // Keep the active field and shared-link sheet mounted during background sync.
+    if (document.activeElement?.matches('input:not([type=checkbox])') || $('#trackingLink')) renderNet();
+    else render();
+    if (scan.el && !C.boothSettings(S.view).pickupScan) closeScanner();
   }
 
   // ---- login
@@ -239,8 +246,7 @@
     document.body.classList.remove('boardmode');
     pinBuf = '';
     $app.innerHTML = '<div class="login"><section class="poster"><div class="mark"><img src="/brand/mark-white.png" alt="beans&amp;beats">beans&amp;beats × Christmas Together</div>' +
-      '<div><h1>Help us keep the queue moving.</h1><p>Charity coffee booth, Hall F, Marina Bay Sands. Every dollar of profit goes to Singapore Red Cross Young Hearts.</p></div>' +
-      '<i class="ph-bold ph-snowflake snow" aria-hidden="true"></i></section>' +
+      '<div><h1>beans&amp;beats charity café.</h1><p>Specialty coffee and curated music at Christmas Together.</p></div></section>' +
       '<form id="loginForm" autocomplete="off"><h2>Enter booth PIN</h2><div class="pinrow" id="pinrow" aria-live="polite"></div>' +
       '<input id="pin" type="password" inputmode="numeric" class="hidden" aria-label="PIN">' +
       '<div class="keypad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button type="button" data-key="' + n + '">' + n + '</button>').join('') +
@@ -253,7 +259,7 @@
     try {
       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
       const d = await res.json();
-      if (!res.ok) { $('#loginErr').textContent = d.error || 'Login failed'; pinBuf = ''; drawPin(); const r = $('#pinrow'); r.classList.remove('shake'); void r.offsetWidth; r.classList.add('shake'); return; }
+      if (!res.ok) { $('#loginErr').textContent = d.error || 'Login failed'; pinBuf = ''; drawPin(); return; }
       S.token = d.token; S.role = d.role; LS.set('token', d.token); LS.set('role', d.role);
       try {
         const st = await api('/api/state');
@@ -287,12 +293,22 @@
     const m = l.milkId && S.view.menu.milks[l.milkId];
     return [l.temp === 'iced' ? 'Iced' : 'Hot', m ? m.name : null].filter(Boolean).join(' · ');
   }
+  function orderProblem() {
+    if (!cart.length) return 'Add a drink to send the order.';
+    if (!draft.name.trim()) return 'Add the guest\'s first name to send.';
+    if (draft.mobile && !draft.consent) return 'Tick consent or clear the mobile number.';
+    if (cart.some((l) => {
+      const item = S.view.menu.items[l.itemId];
+      return !l.custom && (!item || item.deleted || item.soldOut);
+    })) return 'Remove unavailable drinks to send.';
+    return '';
+  }
   function viewOrder() {
     const items = menuItems();
     const total = cartTotal();
     const cups = cart.reduce((s, l) => s + l.qty, 0);
     const inCart = {}; cart.forEach((l) => { inCart[l.itemId] = (inCart[l.itemId] || 0) + l.qty; });
-    let h = '<div class="order"><section><div class="sect-h"><h2>Drinks</h2><span class="mute">Tap a drink to add it</span></div><div class="drinks">';
+    let h = '<div class="order"><section><div class="sect-h"><h2>Drinks</h2></div><div class="drinks">';
     for (const it of items) {
       const meta = [(it.temps || []).includes('iced') ? ((it.temps || []).includes('hot') ? 'Hot / Iced' : 'Iced') : 'Hot only'];
       if (it.milk) meta.push('Milk / Oat'); else meta.push('Black');
@@ -314,14 +330,14 @@
       '<button class="rm" data-line="' + i + '" data-rm="1" aria-label="Remove ' + esc(l.name) + '">' + ic('trash') + '</button></li>').join('') + '</ul>';
     if (showMobile || draft.mobile) {
       h += '<label class="field">Mobile <small>(optional)</small><input id="fMobile" type="tel" inputmode="tel" autocomplete="off" maxlength="16" value="' + esc(draft.mobile) + '" placeholder="Only if guest wants a call"></label>';
-      if (draft.mobile) h += '<label class="consent"><input id="fConsent" type="checkbox"' + (draft.consent ? ' checked' : '') + '> Guest agrees Beans&amp;Beats may use this number only to reach them about this order today. It is deleted once the drink is collected.</label>';
+      h += '<label class="consent' + (draft.mobile ? '' : ' hidden') + '" id="mobileConsent"><input id="fConsent" type="checkbox"' + (draft.consent ? ' checked' : '') + '> Guest agrees Beans&amp;Beats may use this number only to reach them about this order today. It is deleted once the drink is collected.</label>';
     } else h += '<button class="linkbtn" data-act="showMobile">' + ic('phone') + 'Add a mobile number (optional)</button>';
     h += '<div class="bill"><span>' + cups + (cups === 1 ? ' cup' : ' cups') + ' · key into POS</span><b class="num">$' + C.money(total) + '</b></div>';
     h += '<div class="seg" role="group" aria-label="How the guest paid">' + [['paynow', 'qr-code', 'PayNow'], ['card', 'credit-card', 'Card']].map((p) =>
       '<button data-paym="' + p[0] + '" aria-pressed="' + (payMethod === p[0]) + '">' + ic(p[1]) + p[2] + '</button>').join('') + '</div>';
-    const ok = cart.length && draft.name.trim() && (!draft.mobile || draft.consent) && cart.every((l) => { if (l.custom) return true; const it = S.view.menu.items[l.itemId]; return it && !it.soldOut; });
-    h += '<button class="btn dark send" data-act="send"' + (ok ? '' : ' disabled') + '>' + ic('paper-plane-tilt') + 'Send to bar</button>';
-    if (cart.length && !ok) h += '<div class="hint">' + (!draft.name.trim() ? 'Add the guest\'s first name to send.' : draft.mobile && !draft.consent ? 'Tick consent or clear the mobile number.' : 'Remove sold-out drinks to send.') + '</div>';
+    const problem = orderProblem();
+    h += '<button class="btn dark send" data-act="send"' + (problem ? ' disabled' : '') + '>' + ic('paper-plane-tilt') + 'Send to bar</button>';
+    h += '<div class="hint' + (cart.length && problem ? '' : ' hidden') + '" id="sendHint">' + problem + '</div>';
     if (cart.length) h += '<button class="linkbtn" data-act="clearCart">' + ic('x') + 'Clear order</button>';
     h += '</aside></div>';
     return h;
@@ -356,18 +372,21 @@
     if (pick.custom) { const c = Math.round(parseFloat(pick.priceText) * 100); return isFinite(c) && c >= 0 ? c : NaN; }
     return unitPrice(pick);
   }
+  function validCustomPrice() {
+    return !!pick.priceText.trim() && pickPrice() <= 5000;
+  }
   function pickSheet() {
     const p = pick, ice = S.view.settings.icedSurcharge || 0;
     const it = p.custom ? { temps: ['hot', 'iced'], milk: true } : S.view.menu.items[p.itemId];
     const unit = pickPrice();
     const nameOk = !p.custom || p.name.trim().length > 0;
-    const priceOk = !p.custom || (p.priceText.trim() !== '' && !isNaN(unit) && unit <= 5000);
+    const priceOk = !p.custom || validCustomPrice();
     let h = '<div class="modal" data-pk="close"><div class="sheet pick" role="dialog" aria-label="' + (p.custom ? 'Custom item' : esc(p.name)) + '">';
     h += '<div class="pick-hd"><h3>' + (p.custom ? 'Custom item' : esc(p.name)) + '</h3><button class="iconbtn" data-pk="close" aria-label="Close">' + ic('x') + '</button></div>';
     if (p.custom) {
       h += '<label class="field">What is it?<input id="pName" type="text" autocomplete="off" autocapitalize="words" maxlength="30" value="' + esc(p.name) + '" placeholder="e.g. Piccolo"></label>';
       h += '<label class="field">Price per cup <small>(what the guest pays)</small><div class="money"><span>$</span><input id="pPrice" type="text" inputmode="decimal" autocomplete="off" maxlength="6" value="' + esc(p.priceText) + '" placeholder="5.00"></div></label>';
-      if (p.priceText.trim() !== '' && !priceOk) h += '<div class="hint warn-t">Enter a price between $0 and $50.</div>';
+      h += '<div class="hint warn-t' + (p.priceText.trim() && !priceOk ? '' : ' hidden') + '" id="customPriceHint">Enter a price between $0 and $50.</div>';
     }
     if ((it.temps || ['hot']).length > 1) h += '<div class="pick-row"><span class="lbl">Hot or iced</span><div class="seg">' + ['hot', 'iced'].map((t) =>
       '<button data-pk="temp" data-v="' + t + '" aria-pressed="' + (p.temp === t) + '">' + ic(t === 'hot' ? 'fire' : 'snowflake') + (t === 'hot' ? 'Hot' : 'Iced' + (ice && !p.custom ? ' +$' + C.money(ice) : '')) + '</button>').join('') + '</div></div>';
@@ -400,6 +419,8 @@
     render();
   }
   function placeOrder(pay) {
+    const problem = orderProblem();
+    if (problem) { toast(problem); render(); return; }
     const name = draft.name.trim().split(/\s+/)[0].slice(0, 20);
     const no = nextNumber();
     const token = rid(16);
@@ -417,19 +438,39 @@
   let modal = '', modalTimer = null;
   function showConfirm(o) {
     const url = guestUrl(o);
-    modal = '<div class="modal" data-act="closeModal"><div class="sheet">' +
+    modal = '<div class="modal" data-act="closeModal"><div class="sheet confirmation" role="dialog" aria-modal="true" aria-label="Order sent">' +
       '<div class="paid">' + ic('check-circle') + 'Sent to bar · $' + C.money(C.orderTotal(o)) + ' on POS (' + (o.pay === 'card' ? 'card' : 'PayNow') + ')</div>' +
       '<div class="mute">Order number</div><div class="big num">' + C.fmtNo(o.no) + '</div>' +
       '<div class="who">' + esc(o.name) + ', ' + esc(C.describeItems(o)) + '</div>' +
-      '<div class="qr">' + qrSvg(url) + '</div><div style="font-weight:700;font-size:20px">Scan to follow your order.<br>Tap <span style="color:var(--go,#fa6105)">Turn on notifications</span> and we\'ll buzz your phone.</div><div class="mute" style="font-size:14px">Turn the tablet to the guest. No receipt: they show that page at pickup.</div>' +
+      '<div class="tracking-share"><label class="field hidden" id="trackingField">Tracking link<input id="trackingLink" type="text" readonly value="' + esc(url) + '" aria-label="Order tracking link"></label>' +
+      '<div class="share-actions"><button class="btn line" data-act="copyTracking">' + (navigator.share ? ic('share-fat') + 'Share link' : ic('copy') + 'Copy link') + '</button><button class="btn line" data-act="showTrackingQr" aria-expanded="false" aria-controls="trackingQr">' + ic('qr-code') + 'Show QR</button></div>' +
+      '<div id="trackingQr" class="hidden"><div class="qr"></div><p class="mute">Scan to follow this order.</p></div><div id="copyStatus" class="mute" role="status"></div></div>' +
       '<button class="btn dark" data-act="closeModal">' + ic('arrow-right') + 'Next order</button></div></div>';
     render();
     clearTimeout(modalTimer); modalTimer = setTimeout(() => { modal = ''; render(); }, 45000);
   }
 
   // ---- queue
+  async function copyTrackingLink() {
+    const input = $('#trackingLink');
+    if (!input) return;
+    clearTimeout(modalTimer);
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Follow your beans&beats order', url: input.value }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    let copied = false;
+    try { await navigator.clipboard.writeText(input.value); copied = true; } catch (e) {
+      $('#trackingField').classList.remove('hidden');
+      input.focus(); input.select(); input.setSelectionRange(0, input.value.length);
+      try { copied = document.execCommand('copy'); } catch (err) { /* selection remains available */ }
+    }
+    const status = $('#copyStatus');
+    if (status) status.textContent = copied ? 'Link copied.' : 'Press and hold the selected link to copy.';
+  }
   let showDone = false;
   function viewQueue() {
+    const scanButton = C.boothSettings(S.view).pickupScan ? '<button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' : '';
     const day = today();
     const list = orders().filter((o) => ['queued', 'making', 'ready'].includes(o.status)).sort((a, b) => a.createdAt - b.createdAt);
     const cols = [
@@ -443,8 +484,8 @@
     const toMake = list.filter((o) => o.status !== 'ready').reduce((a, o) => a + C.orderCups(o), 0);
     const collectedToday = orders().filter((o) => o.day === day && o.status === 'collected').length;
     let h = S.role !== 'lead'
-      ? '<div class="qbar simple"><div><h1 class="q-title">Queue</h1><p class="mute">' + toMake + (toMake === 1 ? ' cup' : ' cups') + ' to make · ' + collectedToday + ' collected today</p></div><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button></div><div class="queue">'
-      : '<div class="qbar"><button class="btn dark" data-act="scan">' + ic('scan') + 'Scan to collect</button>' +
+      ? '<div class="qbar simple"><div><h1 class="q-title">Queue</h1><p class="mute">' + toMake + (toMake === 1 ? ' cup' : ' cups') + ' to make · ' + collectedToday + ' collected today</p></div>' + scanButton + '</div><div class="queue">'
+      : '<div class="qbar">' + scanButton +
       '<div class="stats"><div><small>Cups today</small><b class="num">' + todays.reduce((a, o) => a + C.orderCups(o), 0) + '</b></div>' +
       '<div><small>In progress</small><b class="num">' + list.filter((o) => o.status !== 'ready').length + '</b></div>' +
       '<div><small>Avg. order to ready</small><b class="num">' + (avg == null ? '–' : avg + 'm') + '</b></div></div></div>' + pulseHtml(2) + '<div class="queue">';
@@ -485,14 +526,14 @@
     const back = { making: 'queued', ready: 'making' }[o.status];
     modal = '<div class="modal" data-act="closeModal"><div class="sheet"><div class="big num" style="font-size:56px">' + C.fmtNo(o.no) + '</div><div>' + esc(o.name || '') + ' · ' + esc(C.describeItems(o)) + '</div>' +
       (back ? '<button class="btn line" data-st="' + back + '" data-id="' + id + '">Undo: move back to ' + (back === 'queued' ? 'Up next' : 'Making') + '</button>' : '') +
-      '<button class="btn line" data-reprint="' + id + '">Show guest QR again</button>' +
+      '<button class="btn line" data-reprint="' + id + '">Share tracking link</button>' +
       '<button class="btn warn" data-st="cancelled" data-id="' + id + '" data-confirm="Cancel order ' + C.fmtNo(o.no) + '? Remember to refund on the POS.">Cancel order</button>' +
       '<button class="btn" data-act="closeModal">Close</button></div></div>';
     render();
   }
 
   // ---- board (public screen)
-  let lastReady = new Set(LS.get('boardSeen', []));
+  let lastReady = new Set();
   let boardFirst = true;
   function chime() {
     try {
@@ -506,65 +547,67 @@
       });
     } catch (e) { /* audio blocked until first tap */ }
   }
-  function boardRow(o, isFresh) {
-    return '<div class="row' + (isFresh ? ' fresh' : '') + '"><b class="num">' + C.fmtNo(o.no) + '</b><span>' + esc(o.name || '') + '</span></div>';
+  function boardRow(o) {
+    return '<div class="row"><b class="num">' + C.fmtNo(o.no) + '</b><span>' + esc(o.name || '') + '</span></div>';
   }
   function renderBoard() {
     const ready = orders().filter((o) => o.status === 'ready').sort((a, b) => b.statusAt - a.statusAt);
     const making = orders().filter((o) => o.status === 'making').sort((a, b) => a.statusAt - b.statusAt);
     const queued = orders().filter((o) => o.status === 'queued');
-    const fresh = ready.filter((o) => !lastReady.has(o.id));
     const imp = C.impact(S.view, now());
-    let el = $app.querySelector('.stage');
-    if (!el) {
-      $app.innerHTML = '<div class="board stage"><canvas id="viz" aria-hidden="true"></canvas>' +
-        '<div class="bhd"><div class="blogo"><img src="/brand/logo-white.png" alt="beans&amp;beats"><div><b>coffee clubbing</b><small>× Christmas Together 2026 · order at the counter, collect here</small></div></div>' +
-        '<div class="meter" id="meter"></div><div id="net"></div></div>' +
-        '<div class="cols"><section class="ready-list"><h2>' + ic('bell-ringing') + 'Ready to collect</h2><div id="bReady"></div></section>' +
-        '<section class="making"><h2>' + ic('coffee') + 'On the bar</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section></div>' +
-        '<div class="ticker"><div class="track" id="ticker"></div></div>' +
-        '<div id="takeover"></div><div id="milestone"></div>' +
-        '<div class="stage-ctl"><button data-act="stageVoice" id="vBtn"></button><button data-act="stageMic" id="mBtn"></button><button data-act="stageFull">' + ic('corners-out') + 'Full screen</button><button data-go="queue">' + ic('x') + 'Exit</button></div>' +
-        (window.Stage && Stage.started ? '' : '<div class="stage-start" id="stageStart"><img src="/brand/logo-white.png" alt=""><h2>Start the board</h2><p>One tap so the board can chime, call out orders by voice and move with the music.</p>' +
-          '<div><button class="btn go" data-act="stageGo" data-mic="1">' + ic('microphone') + 'Sync to the DJ (uses mic)</button><button class="btn line" data-act="stageGo">' + ic('play') + 'Start without mic</button></div>' +
-          '<small>Sound stays on this device. Nothing is recorded or sent anywhere.</small></div>') +
+    const settings = C.boothSettings(S.view);
+    if (!$app.querySelector('.stage')) {
+      $app.innerHTML = '<div class="board stage">' +
+        '<header class="bhd"><div class="blogo"><img src="/brand/logo-white.png" alt="beans&amp;beats"><div><b>ready board</b><small>Christmas Together 2026</small></div></div>' +
+        '<div class="meter" id="meter"></div><div id="net" role="status"></div></header>' +
+        '<div class="cols"><section class="ready-list"><h2>Ready to collect</h2><div id="bReady"></div></section>' +
+        '<section class="making"><h2>Making</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section></div>' +
+        '<footer><span id="boardPickup"></span>' +
+        '<details class="stage-tools"><summary aria-label="Display controls">Display controls</summary><div class="stage-ctl"><button data-act="stageSound" id="vBtn" aria-pressed="false">' + ic('speaker-slash') + 'Sound</button><button data-act="stageFull">' + ic('corners-out') + 'Full screen</button><button data-go="queue">' + ic('x') + 'Exit</button></div></details></footer>' +
         '</div>';
-      el = $app.querySelector('.stage');
-      if (window.Stage) Stage.mount($('#viz'));
     }
     const MAXR = 5, MAXM = 6;
-    $('#bReady').innerHTML = (ready.length ? ready.slice(0, MAXR).map((o) => boardRow(o, fresh.includes(o))).join('') : '<div class="idle">Your number lights up here the moment your drink is ready.</div>') +
+    $('#bReady').innerHTML = (ready.length ? ready.slice(0, MAXR).map(boardRow).join('') : '<div class="idle">Your number will appear here when your drink is ready.</div>') +
       (ready.length > MAXR ? '<div class="more-count">+ ' + (ready.length - MAXR) + ' more at the counter</div>' : '');
     $('#bMaking').innerHTML = (making.length ? making.slice(0, MAXM).map((o) => boardRow(o)).join('') : '<div class="idle">Nothing on the bar</div>') +
       (making.length > MAXM ? '<div class="more-count">+ ' + (making.length - MAXM) + ' more</div>' : '');
     const openCups = making.concat(queued).reduce((a, o) => a + C.orderCups(o), 0);
     const waitMin = Math.max(1, Math.round(openCups * C.pace(S.view, now()) / 60000));
     $('#bWait').innerHTML = queued.length || making.length ? ic('hourglass-medium') + '<span>' + queued.length + ' in line · about <b class="num">' + waitMin + ' min</b> for a new order</span>' : ic('lightning') + '<span>No wait right now. Order at the counter.</span>';
-    const pct = Math.min(100, 100 * imp.total / imp.goal);
-    $('#meter').innerHTML = '<div class="m-top"><span>' + ic('heart') + 'Raised for Red Cross Young Hearts</span><b class="num">$' + Math.round(imp.total / 100).toLocaleString('en-SG') + '</b></div>' +
-      '<div class="m-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div><div class="m-sub"><span class="num">' + imp.cups.toLocaleString('en-SG') + ' cups poured</span><span class="num">goal $' + Math.round(imp.goal / 100).toLocaleString('en-SG') + '</span></div>';
-    const tick = ['order at the counter · scan your QR to follow your drink live', 'every dollar goes to Singapore Red Cross Young Hearts', imp.cups + ' cups poured so far, thank you'];
-    if (ready.length) tick.unshift('now serving ' + ready.slice(0, 4).map((o) => C.fmtNo(o.no) + ' ' + (o.name || '')).join(' · '));
-    const tickHtml = tick.map((t) => '<span>' + esc(t) + '</span><i>✦</i>').join('');
-    const tk = $('#ticker'); if (tk.dataset.k !== tickHtml) { tk.dataset.k = tickHtml; tk.innerHTML = tickHtml + tickHtml; }
-    const vb = $('#vBtn'); if (vb && window.Stage) vb.innerHTML = ic(Stage.voice ? 'speaker-high' : 'speaker-slash') + (Stage.voice ? 'Voice on' : 'Voice off');
-    const mb = $('#mBtn'); if (mb && window.Stage) mb.innerHTML = ic(Stage.mic ? 'waveform' : 'microphone-slash') + (Stage.mic ? 'Listening to the DJ' : 'Sync to music');
-    if (!boardFirst && window.Stage) {
-      for (const o of fresh.slice().reverse()) Stage.announce({ no: C.fmtNo(o.no), name: o.name, items: C.describeItems(o), cups: C.orderCups(o) });
-      const step = 50, lastM = LS.get('boardMilestone', null), mNow = Math.floor(imp.cups / step);
-      if (lastM != null && mNow > lastM && imp.cups) Stage.milestone(imp.cups + ' cups poured for Red Cross Young Hearts. Thank you!');
-      LS.set('boardMilestone', mNow);
-    } else if (boardFirst) LS.set('boardMilestone', Math.floor(imp.cups / 50));
+    $('#boardPickup').textContent = settings.pickupScan ? 'Show your pickup code at the counter.' : 'Give your order number at the counter.';
+    $('#meter').hidden = !settings.showDonation;
+    const pct = imp.goal > 0 ? Math.min(100, 100 * imp.total / imp.goal) : 0;
+    $('#meter').innerHTML = '<div class="m-top"><span>' + ic('heart') + 'Sales supporting ' + esc(settings.donationName) + '</span><b class="num">$' + Math.round(imp.total / 100).toLocaleString('en-SG') + '</b></div>' +
+      (settings.showDonationGoal ? '<div class="m-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div><div class="m-sub"><span class="num">' + imp.cups.toLocaleString('en-SG') + (imp.cups === 1 ? ' cup' : ' cups') + ' poured</span><span class="num">sales goal $' + (imp.goal / 100).toLocaleString('en-SG', { maximumFractionDigits: 2 }) + '</span></div>' : '');
+    const sound = window.Stage && Stage.enabled;
+    const soundButton = $('#vBtn');
+    soundButton.setAttribute('aria-pressed', String(Boolean(sound)));
+    soundButton.innerHTML = ic(sound ? 'speaker-high' : 'speaker-slash') + 'Sound';
+    if (!boardFirst && sound) Stage.announce(ready.filter((o) => !lastReady.has(o.id)).reverse());
     if (S.seq || S.lastOk) boardFirst = false; // baseline = first render with real data
-    lastReady = new Set(ready.map((o) => o.id)); LS.set('boardSeen', Array.from(lastReady));
+    lastReady = new Set(ready.map((o) => o.id));
     renderNet();
   }
   setInterval(() => { if (S.token && (route === 'queue')) render(); }, 30000);
 
   // ---- menu controls (lead)
+  let boothDraft = {};
+  function boothSetup() {
+    const values = { ...C.boothSettings(S.view), goal: C.money(C.donationGoal(S.view)), ...boothDraft };
+    return '<form class="panel" id="boothForm"><h2>Booth setup</h2><div class="settings-grid">' +
+      '<label class="switch"><input type="checkbox" id="pickupScan" name="pickupScan"' + (values.pickupScan ? ' checked' : '') + '> Scan pickup codes to collect</label>' +
+      '<p class="mute">When scanning is off, call the order number and mark it collected in Queue.</p>' +
+      '<label class="switch"><input type="checkbox" id="showDonation" name="showDonation"' + (values.showDonation ? ' checked' : '') + '> Show donation campaign</label>' +
+      '<label class="field">Beneficiary<input type="text" id="donationName" name="donationName" maxlength="120" required value="' + esc(values.donationName) + '"></label>' +
+      '<label class="switch"><input type="checkbox" id="showDonationGoal" name="showDonationGoal"' + (values.showDonationGoal ? ' checked' : '') + '> Show sales goal and progress</label>' +
+      '<label class="field">Event sales goal (S$)<input type="number" id="donationGoal" name="goal" min="0.01" step="0.01" required value="' + esc(values.goal) + '"></label>' +
+      '<p class="mute">Progress uses total order sales. All profits go to the beneficiary.</p>' +
+      '<button class="btn dark" type="submit">Save booth settings</button></div></form>';
+  }
+
   function viewMenu() {
     const items = menuItems(); const ms = milks();
-    let h = '<div class="panel"><h2><span>Drinks</span><button class="btn dark" data-act="addItem">' + ic('plus') + 'Add drink</button></h2><table><thead><tr><th>Name</th><th>Price $</th><th>Hot</th><th>Iced</th><th>Milk choice</th><th>Status</th><th></th></tr></thead><tbody>';
+    let h = boothSetup() + '<div class="panel"><h2><span>Drinks</span><button class="btn dark" data-act="addItem">' + ic('plus') + 'Add drink</button></h2><table><thead><tr><th>Name</th><th>Price $</th><th>Hot</th><th>Iced</th><th>Milk choice</th><th>Status</th><th></th></tr></thead><tbody>';
     for (const it of items) {
       h += '<tr><td><input type="text" id="n-' + esc(it.id) + '" value="' + esc(it.name) + '" data-edit="' + esc(it.id) + '" data-field="name"></td>' +
         '<td><input type="number" id="p-' + esc(it.id) + '" step="0.10" min="0" value="' + C.money(it.price) + '" data-edit="' + esc(it.id) + '" data-field="price"></td>' +
@@ -587,9 +630,9 @@
     h += '<div class="panel"><h2>Ready board credit line</h2><input type="text" id="creditIn" style="width:100%;padding:10px;border:2px solid var(--ink);border-radius:10px;font-size:16px" value="' + esc(S.view.settings.credit || '') + '" data-setting="credit"></div>';
     const lv = {}; C.stockLevels(S.view, now()).forEach((x) => { lv[x.key] = x; });
     const stockRows = [['oat', 'Oat milk'], ['milk', 'Fresh milk'], ['beans', 'Coffee beans'], ['cups', 'Iced cups']];
-    h += '<div class="panel"><h2><span>' + ic('package') + ' Stock & charity goal</span></h2><p class="mute" style="margin-top:-6px">Enter how many cups\' worth you have on hand. The queue screen warns the lead before anything runs out, using the live pace of orders.</p><table><thead><tr><th>Item</th><th>On hand (cups)</th><th>Left now</th><th>Runs out</th></tr></thead><tbody>' +
+    h += '<div class="panel"><h2><span>' + ic('package') + ' Stock</span></h2><p class="mute" style="margin-top:-6px">Enter how many cups\' worth you have on hand. The queue screen warns the lead before anything runs out, using the live pace of orders.</p><table><thead><tr><th>Item</th><th>On hand (cups)</th><th>Left now</th><th>Runs out</th></tr></thead><tbody>' +
       stockRows.map(([k, label]) => { const x = lv[k]; return '<tr><td><b>' + label + '</b></td><td><input type="number" min="0" step="1" id="stk-' + k + '" data-stock="' + k + '" placeholder="e.g. 120" value="' + (x ? x.start : '') + '"></td><td class="num">' + (x ? x.left : '–') + '</td><td class="num">' + (x && x.outAt ? C.sgTime(x.outAt) : '–') + '</td></tr>'; }).join('') +
-      '<tr><td><b>Charity goal (event)</b></td><td><input type="number" min="0" step="100" id="goalIn" data-setting="goal" value="' + Math.round((S.view.settings.goal || 500000) / 100) + '"></td><td colspan="2" class="mute">shown as a progress bar on the ready board</td></tr></tbody></table></div>';
+      '</tbody></table></div>';
     h += '<p class="mute">Changes apply on every tablet as soon as they sync, and are saved offline in the meantime. Price changes only affect new orders.</p>';
     return h;
   }
@@ -610,13 +653,14 @@
     if (!reportDay || !days.includes(reportDay)) reportDay = today();
     const r = C.report(S.view, reportDay);
     const closed = S.view.closedDays[reportDay];
+    const booth = C.boothSettings(S.view);
     let h = '<div class="panel"><h2><span>Daily sales · ' + esc(reportDay) + (closed ? ' · closed' : '') + '</span><select id="daySel" style="padding:8px;border-radius:8px;font-size:16px">' +
       days.map((d) => '<option' + (d === reportDay ? ' selected' : '') + '>' + d + '</option>').join('') + '</select></h2>';
     h += '<div class="kpis"><div class="kpi hero"><small>' + ic('coins') + 'Total sales (SGD)</small><b class="num">$' + C.money(r.total) + '</b></div>' +
       '<div class="kpi"><small>' + ic('coffee') + 'Cups</small><b class="num">' + r.cups + '</b></div><div class="kpi"><small>' + ic('receipt') + 'Orders</small><b class="num">' + r.orders + '</b></div>' +
       '<div class="kpi"><small>' + ic('qr-code') + 'PayNow</small><b class="num">$' + C.money(r.byPay.paynow.total) + '</b></div>' +
       '<div class="kpi"><small>' + ic('credit-card') + 'Card</small><b class="num">$' + C.money(r.byPay.card.total) + '</b></div></div>' +
-      '<div class="impact-band"><div>' + ic('heart') + '<span>Raised for Singapore Red Cross Young Hearts, whole event</span></div><b class="num">$' + C.money(C.impact(S.view, now()).total) + '</b></div>' +
+      (booth.showDonation ? '<div class="impact-band"><div>' + ic('heart') + '<span>Event sales supporting ' + esc(booth.donationName) + '</span></div><b class="num">$' + C.money(C.impact(S.view, now()).total) + '</b></div>' : '') +
       (r.cancelled ? '<p class="mute" style="margin-top:-8px">' + r.cancelled + ' cancelled order(s) excluded.</p>' : '');
     h += '<table><thead><tr><th>Drink</th><th>Hot</th><th>Iced</th><th>Oat/alt</th><th>Cups</th><th>Total $</th></tr></thead><tbody>' +
       (r.byItem.length ? r.byItem.map((i) => '<tr><td>' + esc(i.name) + '</td><td class="num">' + i.hot + '</td><td class="num">' + i.iced + '</td><td class="num">' + i.oat + '</td><td class="num"><b>' + i.cups + '</b></td><td class="num">' + C.money(i.total) + '</td></tr>').join('') : '<tr><td colspan="6" class="mute">No sales yet</td></tr>') +
@@ -640,6 +684,7 @@
   // ---- guest-facing display (second screen at the counter, paperless)
   function renderDisplay() {
     const st = Number(S.station) || 1;
+    const booth = C.boothSettings(S.view);
     const latest = orders().filter((o) => o.station === st && o.status !== 'cancelled' && now() - o.createdAt < 90000).sort((a, b) => b.createdAt - a.createdAt)[0];
     let inner;
     if (latest) {
@@ -653,7 +698,7 @@
         '<p style="color:#8c8c8c;font-size:1.6vw">Iced +$' + C.money(S.view.settings.icedSurcharge || 0) + ' · ' + milks().filter((m) => m.surcharge).map((m) => esc(m.name) + ' milk +$' + C.money(m.surcharge)).join(' · ') + '</p></div>';
     }
     $app.innerHTML = '<div class="board"><div class="bhd"><h1>Beans&amp;Beats</h1><div id="net"></div></div>' + inner +
-      '<footer><span>All profits go to Singapore Red Cross Young Hearts</span><span>' + esc(S.view.settings.credit || '') + '</span></footer><button class="exit" data-go="order">Exit display</button></div>';
+      '<footer><span>' + (booth.showDonation ? 'All profits go to ' + esc(booth.donationName) : '') + '</span><span>' + esc(S.view.settings.credit || '') + '</span></footer><button class="exit" data-go="order">Exit display</button></div>';
     renderNet();
     clearTimeout(renderDisplay.t);
     if (latest) renderDisplay.t = setTimeout(() => { if (route === 'display') render(); }, 90000 - (now() - latest.createdAt) + 200);
@@ -661,7 +706,7 @@
   function guestUrl(o) {
     // The fragment (#...) carries enough to render the guest page before this
     // tablet has synced. Browsers never send fragments to the server.
-    const snap = btoa(unescape(encodeURIComponent(JSON.stringify({ no: C.fmtNo(o.no), name: o.name, items: C.describeItems(o) })))).replace(/=+$/, '');
+    const snap = btoa(unescape(encodeURIComponent(JSON.stringify({ no: C.fmtNo(o.no), name: o.name, items: C.describeItems(o), booth: C.boothSettings(S.view) })))).replace(/=+$/, '');
     return location.origin + '/o/' + o.token + '#' + snap;
   }
 
@@ -671,6 +716,7 @@
     return window.jsQR ? Promise.resolve() : new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = '/vendor/jsqr.js'; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
   }
   async function openScanner() {
+    if (!C.boothSettings(S.view).pickupScan) return;
     closeScanner();
     const el = document.createElement('div');
     el.className = 'modal'; el.style.zIndex = 60;
@@ -720,6 +766,7 @@
     scan.el = scan.stream = scan.raf = null;
   }
   function onScanned(text) {
+    if (!C.boothSettings(S.view).pickupScan) return closeScanner();
     const m = String(text).match(/(?:\/o\/|BB:)([A-Za-z0-9_-]{16,64})/);
     scan.pause = Date.now() + 2500;
     if (!m) { scanMsg('<b>Not a Beans&amp;Beats order QR.</b>'); return; }
@@ -744,6 +791,7 @@
   function onScanClick(e) {
     const b = e.target.closest('[data-x]'); if (!b) return;
     if (b.dataset.x === 'close') return closeScanner();
+    if (!C.boothSettings(S.view).pickupScan) return closeScanner();
     if (b.dataset.x === 'undo') { dispatch('order.status', { id: b.dataset.id, status: 'ready' }); scanMsg('<b>Undone. Order is back on the ready list.</b>'); }
     if (b.dataset.x === 'force') { dispatch('order.status', { id: b.dataset.id, status: 'collected' }); scanMsg('<b>Collected.</b>'); scan.pause = Date.now() + 1500; }
   }
@@ -751,6 +799,7 @@
   // ---- device settings
   function settingsModal() {
     modal = '<div class="modal" data-act="closeModal"><div class="sheet" style="text-align:left"><h2>This device</h2><div class="settings-grid">' +
+      '<div class="row-actions"><a class="btn line" href="/board?frame=board" target="_blank" rel="noopener">' + ic('television-simple') + 'Open ready board</a><a class="btn line" href="/display?frame=display" target="_blank" rel="noopener">Open counter display</a></div>' +
       '<label>Order station number<select id="stSel">' + [1, 2, 3, 4].map((n) => '<option' + (n == S.station ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
       '<label>Order stations at the booth<select id="stsSel">' + [1, 2, 3, 4].map((n) => '<option' + (n == S.stations ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
       '<p class="mute" style="margin:0;font-size:13px">With 2 order tablets, tablet 1 issues odd numbers and tablet 2 even numbers, so they never clash even while offline. Set this before the first order of the day.</p>' +
@@ -764,18 +813,54 @@
   // ------------------------------------------------------------------ events
   document.addEventListener('submit', (e) => {
     if (e.target.id === 'loginForm') { e.preventDefault(); doLogin(pinBuf); }
+    if (e.target.id !== 'boothForm') return;
+    e.preventDefault();
+    if (S.role !== 'lead') return;
+    const updates = { ...boothDraft };
+    if ('donationName' in updates) {
+      updates.donationName = updates.donationName.trim();
+      if (!updates.donationName) { toast('Enter a beneficiary name'); return; }
+    }
+    if ('goal' in updates) {
+      updates.goal = Math.round(Number(updates.goal) * 100);
+      if (!Number.isSafeInteger(updates.goal) || updates.goal < 1) { toast('Enter a valid sales goal'); return; }
+    }
+    if (!Object.keys(updates).length) return;
+    boothDraft = {};
+    dispatch('settings.update', updates);
+    toast('Booth settings saved');
   });
   document.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.id === 'fName') { draft.name = t.value.replace(/[^\p{L}\p{M}' .-]/gu, ''); saveCart(); refreshPay(); }
-    if (t.id === 'pName' && pick) { pick.name = t.value.replace(/[^\p{L}\p{M}\p{N}' .&+()-]/gu, ''); refreshPay(); }
-    if (t.id === 'pPrice' && pick) { pick.priceText = t.value.replace(/[^\d.]/g, ''); refreshPay(); }
-    if (t.id === 'fMobile') { const had = !!draft.mobile; draft.mobile = t.value.replace(/[^\d+ ]/g, ''); saveCart(); if (had !== !!draft.mobile) render(); else refreshPay(); }
+    if (t.form?.id === 'boothForm') boothDraft[t.name] = t.type === 'checkbox' ? t.checked : t.value;
+    if (t.id === 'fName' || t.id === 'fMobile') {
+      if (t.id === 'fName') draft.name = t.value.replace(/[^\p{L}\p{M}' .-]/gu, '');
+      else {
+        draft.mobile = t.value.replace(/[^\d+ ]/g, '');
+        $('#mobileConsent').classList.toggle('hidden', !draft.mobile);
+      }
+      saveCart(); refreshPay();
+    }
+    if (pick?.custom && (t.id === 'pName' || t.id === 'pPrice')) {
+      if (t.id === 'pName') pick.name = t.value.replace(/[^\p{L}\p{M}\p{N}' .&+()-]/gu, '');
+      else pick.priceText = t.value.replace(/[^\d.]/g, '');
+      const button = $('[data-pk="add"]');
+      const priceOk = validCustomPrice();
+      button.disabled = !pick.name.trim() || !priceOk;
+      button.querySelector('.num').textContent = priceOk ? '$' + C.money(pickPrice() * pick.qty) : '';
+      $('#customPriceHint').classList.toggle('hidden', !pick.priceText.trim() || priceOk);
+    }
   });
-  function refreshPay() { const keep = document.activeElement && document.activeElement.id; render(); if (keep) { const el = document.getElementById(keep); if (el) el.focus(); } }
+  function refreshPay() {
+    const problem = orderProblem();
+    $('[data-act="send"]').disabled = !!problem;
+    const hint = $('#sendHint');
+    hint.textContent = problem;
+    hint.classList.toggle('hidden', !cart.length || !problem);
+  }
   document.addEventListener('change', (e) => {
     const t = e.target, d = t.dataset;
-    if (t.id === 'fConsent') { draft.consent = t.checked; saveCart(); render(); }
+    if (t.id === 'fConsent') { draft.consent = t.checked; saveCart(); refreshPay(); }
     if (t.id === 'daySel') { reportDay = t.value; render(); }
     if (d.edit) {
       const cur = S.view.menu.items[d.edit];
@@ -801,7 +886,7 @@
       dispatch('settings.update', { stock }); toast('Stock set'); return;
     }
     if (d.setting) {
-      const v = d.setting === 'icedSurcharge' || d.setting === 'goal' ? Math.max(0, Math.round(parseFloat(t.value) * 100) || 0) : t.value.slice(0, 120);
+      const v = d.setting === 'icedSurcharge' ? Math.max(0, Math.round(parseFloat(t.value) * 100) || 0) : t.value.slice(0, 120);
       dispatch('settings.update', { [d.setting]: v }); toast('Saved');
     }
   });
@@ -810,7 +895,7 @@
     const t = e.target.closest('[data-go],[data-act],[data-add],[data-line],[data-pay],[data-st],[data-more],[data-sold],[data-msold],[data-delitem],[data-delmilk],[data-reprint],[data-call],[data-pk],[data-paym]');
     if (!t) return;
     const d = t.dataset;
-    if (d.go) { e.preventDefault(); modal = ''; go(d.go); if (d.go === 'board') { chime.ctx || chime(); } return; }
+    if (d.go) { e.preventDefault(); modal = ''; go(d.go); return; }
     if (d.pk) return pickAction(t, e);
     if (d.paym) { payMethod = d.paym === 'card' ? 'card' : 'paynow'; LS.set('payMethod', payMethod); return render(); }
     if (d.add) return addDrink(d.add);
@@ -837,16 +922,23 @@
     if (d.delitem) { if (confirm('Delete ' + S.view.menu.items[d.delitem].name + ' from the menu?')) dispatch('menu.delete', { kind: 'item', id: d.delitem }); return; }
     if (d.delmilk) { if (confirm('Delete this milk option?')) dispatch('menu.delete', { kind: 'milk', id: d.delmilk }); return; }
     switch (d.act) {
-      case 'closeModal': if (e.target === t || t.tagName === 'BUTTON') { modal = ''; clearTimeout(modalTimer); render(); } break;
-      case 'scan': openScanner(); break;
-      case 'stageGo': {
-        const st = $('#stageStart');
-        Stage.start(!!d.mic).then((ok) => { if (d.mic && !ok) toast('Mic not available, running the built-in groove'); render(); });
-        if (st) st.remove();
+      case 'copyTracking': copyTrackingLink(); break;
+      case 'showTrackingQr': {
+        clearTimeout(modalTimer);
+        const qr = $('#trackingQr');
+        if (!qr) break;
+        if (!qr.querySelector('svg')) {
+          try { qr.querySelector('.qr').innerHTML = qrSvg($('#trackingLink').value); }
+          catch (e) { $('#copyStatus').textContent = 'QR unavailable. Share the tracking link instead.'; break; }
+        }
+        const hidden = qr.classList.toggle('hidden');
+        t.setAttribute('aria-expanded', String(!hidden));
+        t.innerHTML = ic('qr-code') + (hidden ? 'Show QR' : 'Hide QR');
         break;
       }
-      case 'stageVoice': Stage.setVoice(!Stage.voice); if (Stage.voice) Stage.speak('Voice call-outs on.'); render(); break;
-      case 'stageMic': if (!Stage.mic) Stage.start(true).then((ok) => { toast(ok ? 'Listening to the music' : 'Mic not available'); render(); }); break;
+      case 'closeModal': if (e.target === t || t.tagName === 'BUTTON') { modal = ''; clearTimeout(modalTimer); render(); } break;
+      case 'scan': openScanner(); break;
+      case 'stageSound': if (window.Stage) { Stage.setEnabled(!Stage.enabled); render(); } break;
       case 'stageFull': if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); break;
       case 'send': if (!t.disabled) placeOrder(payMethod); break;
       case 'showMobile': showMobile = true; render(); { const m = $('#fMobile'); if (m) m.focus(); } break;
@@ -920,12 +1012,12 @@
     if (m.bb === 'rush') { let i = 0; const n = Math.min(30, m.n || 10); const t = setInterval(() => { simOrder(); if (++i >= n) clearInterval(t); }, 650); }
     if (m.bb === 'autopilot') { clearInterval(pilot); pilot = m.on ? setInterval(autopilotTick, 1600) : null; }
     if (m.bb === 'go' && m.route) go(m.route);
-    if (m.bb === 'stage' && window.Stage) { Stage.start(false); const st = $('#stageStart'); if (st) st.remove(); }
+    if (m.bb === 'stage' && window.Stage) { Stage.setEnabled(true); if (route === 'board') render(); }
   });
 
   // ------------------------------------------------------------------ boot
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-  if (!S.token) { route = 'login'; render(); }
+  if (!S.token) render();
   else { rebuild(); if (route === 'login') route = 'order'; render(); sync(); }
   window.__bb = S; // debugging aid
   window.__bbScan = onScanned; // lets tests feed a decoded QR without a camera

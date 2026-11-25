@@ -5,7 +5,7 @@
 <br>
 
 **The offline-first order & pickup queue for the beans&beats coffee-clubbing booth at Christmas Together 2026.**<br>
-Baristas tap once per step. Guests scan a QR and get a notification when their drink is ready.<br>
+Baristas tap once per step. Guests can open a tracking link and get a notification when their drink is ready.<br>
 No app to download, no paper receipts, and it keeps working when the hall wifi drops.
 
 <br>
@@ -57,9 +57,9 @@ Christmas Together 2026 runs for four days in Hall F at Marina Bay Sands. The be
 
 This project replaces the paper:
 
-- **The counter** keys an order in a few taps, including **custom off-menu drinks** with their own price, and hands the guest a QR code instead of a receipt.
+- **The counter** keys an order on the iPad, including **custom off-menu drinks** with their own price, and gives the guest an order number. Staff can share a tracking link or show its QR code.
 - **The bar** sees one clean queue and moves each cup along with one tap: *Up next → Making → Ready → Collected*.
-- **The guest** scans the QR, watches a cup fill up on their phone, and gets a **notification when it's ready**, even if they've left the page.
+- **The guest** can follow the order on their phone and turn on a **ready notification**. They can also share a card showing their support for the beneficiary.
 - **The booth lead** gets live stats, stock warnings, menu controls, and a daily CSV that matches the POS.
 
 ## ✨ Features
@@ -68,12 +68,12 @@ This project replaces the paper:
 |---|---|---|
 | ☕ | Counter | **Tap-to-pick drink sheet**: hot/iced, milk and cups in one small sheet. Drinks with no choices are added in one tap. Surcharges apply automatically. |
 | ✍️ | Counter | **Custom item**: a guest asks for a piccolo that isn't on the menu? Type the name and price and it flows through the queue, board, guest page and report like any other drink, tagged `CUSTOM`. |
-| 📲 | Counter | **One "Send to bar" button**, PayNow/Card noted for reconciliation, and a QR for the guest to scan. No receipts. |
-| 🧑‍🍳 | Baristas | **Calm barista queue**: three lanes, one big button per card, ages in `4m` / `1h 05m`, red after 10 minutes. **Scan to collect** with the tablet camera. |
-| 🔔 | Guests | **Ready notifications**: a big *Turn on notifications* card the moment the QR is scanned. Web Push reaches the lock screen. There's a heads-up when the drink is being made, guided Add to Home Screen steps on iPhone, and chime, vibration and title-flash fallbacks. |
-| 🥤 | Guests | **A cup that fills as it's made**, with steam if hot or ice if iced, a live ETA from the bar's real pace, confetti on ready, and a pickup QR. |
+| 📲 | Counter | **Send to bar** records PayNow or card for reconciliation. Share the tracking link or show its QR on request. |
+| 🧑‍🍳 | Baristas | Three lanes with one action per step. Mark pickup with **Collected**. The booth lead can enable camera pickup scanning. |
+| 🔔 | Guests | **Ready notifications** are optional. Web Push can reach the lock screen, with Add to Home Screen guidance on iPhone and in-page sound as a fallback. |
+| 🥤 | Guests | Order number, status, and estimated wait. A pickup QR appears when the order is ready and pickup scanning is enabled. |
 | 📸 | Guests | **Shareable story card**: a 1080×1920 *"I sipped for Young Hearts"* image made on the phone for Instagram. |
-| 📺 | Booth | **Ready board** for the TV that pulses with the DJ (mic beat detection), takes over the screen for each new ready order, and **calls it out by voice**. |
+| 📺 | Booth | **Ready board** for the separate monitor with ready and making lists, optional donation progress, and sound controls. |
 | 🧠 | Lead | **Booth insights** in plain language: *"Oat milk runs out around 3:40 pm at this pace"*, *"Rush building: 25 cups in vs 5 out"*. |
 | 📊 | Lead | **Daily sales report** with KPIs, per-drink and per-hour breakdowns, CSV export per order, and **Close day** with a PDPA wipe. |
 | 📶 | Everyone | **Offline-first**: every tap is saved on the device first, then synced idempotently. Wifi drops never lose or duplicate an order. |
@@ -83,9 +83,9 @@ This project replaces the paper:
 
 | Role | PIN | Opens |
 |---|---|---|
-| **Barista** | `2345` | Order screen, barista queue, ready board, guest display, scan-to-collect |
+| **Barista** | `2345` | Order screen, barista queue, ready board, and optional pickup scanning |
 | **Booth lead** | `3456` | Everything above, plus stats, insights, menu controls and the daily sales report |
-| **Guest** | none | Scan the QR shown after ordering, or open [`/m`](https://beans-beats-queue.onrender.com/m) for the menu |
+| **Guest** | none | Open the order link shared at the counter or [`/m`](https://beans-beats-queue.onrender.com/m) for the menu |
 | **Judge** | `3456` | Open [**`/demo`**](https://beans-beats-queue.onrender.com/demo), log in once, press **Start**, then **Rush hour**. Turn the sound on. |
 
 > [!NOTE]
@@ -102,17 +102,19 @@ sequenceDiagram
     participant B as Ready board (TV)
     G->>O: Orders at the counter (first name, drink, or a custom item + price)
     O->>O: Staff key the total into the POS, tap "Send to bar"
-    O-->>G: Order number + QR on screen (no receipt)
-    G->>G: Scans QR → live status page → "Turn on notifications"
+    O-->>G: Order number and optional tracking link
+    G->>G: Opens tracking link and can turn on notifications
     O->>Q: Order appears instantly (or syncs after a wifi drop)
     Q->>Q: One tap "Making" → guest gets "being made" heads-up
     Q->>Q: One tap "Ready"
-    Q-->>G: Push notification on the lock screen, phone chimes, page turns black
-    Q-->>B: Number + name take over the TV and are called out by voice
-    G->>Q: Shows pickup QR, tablet camera scans it → Collected
+    Q-->>G: Push notification on the lock screen and ready status in the guest page
+    Q-->>B: Number + name join the ready list, with optional voice call-out
+    G->>Q: Gives order number. Barista taps Collected
 ```
 
 ## 📸 Screenshots
+
+These screenshots are from the original demo.
 
 <table>
 <tr>
@@ -128,7 +130,7 @@ sequenceDiagram
 <td><img src="docs/screenshots/guest-iphone.png" alt="iPhone notification setup"><br><b>iPhone.</b> Guided Add to Home Screen for lock-screen alerts.</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/board.png" alt="Ready board"><br><b>Ready board.</b> Beat-reactive visuals, charity meter and now-serving ticker.</td>
+<td><img src="docs/screenshots/board.png" alt="Ready board"><br><b>Ready board.</b> Ready and making lists with a charity meter.</td>
 <td><img src="docs/screenshots/story-card.png" alt="Story card"><br><b>Story card.</b> Shared from the phone after pickup.</td>
 </tr>
 <tr>
@@ -156,8 +158,8 @@ npm run test:all     # smoke + storage tests
 | Route | What |
 |---|---|
 | `/order` | Counter: take orders |
-| `/queue` | Bar: Up next / Making / Ready, scan to collect |
-| `/board` | TV ready board |
+| `/queue` | Bar: Up next / Making / Ready, with manual collection and optional pickup scanning |
+| `/board` | Ready board for the separate monitor |
 | `/display` | Guest-facing second screen (latest QR, menu when idle) |
 | `/menu` · `/report` | Lead: menu controls · daily sales |
 | `/o/<token>` | Guest status page (from the QR) |
@@ -250,7 +252,7 @@ store.js                Upstash Redis mirror (restore on boot, write-behind queu
 public/shared/core.js   reducer, conflict rules, ETA, reports, CSV (server + browser)
 public/app.js           staff app: order, queue, board, display, menu, report, scanner
 public/guest.*          guest page: cup, ETA, notifications, pickup QR, story card
-public/stage.js         board visuals, beat detection, voice call-outs
+public/stage.js         optional ready-board chimes and voice call-outs
 public/sw.js            offline shell + push notifications
 scripts/reset-day.js    close a day / full wipe (also clears Redis)
 test/                   smoke.js (end-to-end), storage.js (restart + restore)
@@ -274,7 +276,7 @@ Browsers only allow notifications after the user taps something, so no website c
 |---|---|---|
 | Android Chrome, desktop browsers, iPhone home-screen app | Orange **Turn on notifications** card | Web Push subscription. A *"being made"* heads-up, then a sticky *"Order 012 is ready"* on the lock screen, even with the page closed. |
 | iPhone in Safari | **Add to Home Screen** steps (Share → Add to Home Screen → open → Turn on) | Each order gets its own web-app manifest, so the home-screen icon opens straight to that order. Requires iOS 16.4+. |
-| Notifications blocked | How to unblock, plus **Turn on sound alert** | Chime, vibration, title flash and screen wake lock while the page is open |
+| Notifications blocked | How to unblock, plus **Turn on sound alert** | Chime, vibration and screen wake lock while the page is open |
 | Already allowed (reload, second order) | Green "Notifications on" with a **Test** button | Subscribes again silently, with no tap needed |
 
 Any tap on the page also unlocks the chime, so guests who skip the card still hear it. Subscriptions are deleted when the drink is collected.
@@ -307,10 +309,10 @@ Both run in CI on Node 20 and 22. Before the event, a browser **UAT pass** drove
 | 1–2 | Login and role access (barista can't open sales) |
 | 3–4 | One-tap espresso; latte iced + oat priced $10 |
 | 5–6 | Custom item validation; Piccolo 2 × $5.50 |
-| 7–8 | Name required; Send to bar gives order 001 + QR |
+| 7–8 | Name required; Send to bar gives order 001 and an optional tracking link |
 | 9–10 | Server stores the custom item; bar shows the `CUSTOM` tag |
 | 11 | Guest page goes Received → Making → Ready |
-| 12–13 | Board shows it; scanning the pickup QR collects it |
+| 12–13 | Board shows the order. Barista taps **Collected** after the handoff |
 | 14 | Wifi drop: orders saved offline, resynced with no duplicates |
 | 15 | Sold-out toggles appear live on the counter |
 | 16 | Report and CSV include the Piccolo, with no guest names |
@@ -326,7 +328,9 @@ Guest notification states (ask / on / blocked / iPhone) and server push delivery
 
 ## 🎪 Running the event
 
-**Before doors open:** open the site once per tablet on wifi and log in, which caches everything for offline use. Add it to the Home Screen. Set **⚙ → Order station number** on each order tablet. Put `/board` on the TV and tap once so it can chime. A 4G travel router as the booth's own network is recommended.
+Open the same app address on the iPad and monitor before doors open. Use `/order` on the iPad and `/board` on the monitor. Sign in on each while connected so the app can cache locally. Open **Display controls** on the board for fullscreen or sound.
+
+The booth lead can edit the beneficiary and event sales goal in **Menu & setup**. The donation campaign and its goal can be hidden independently. Pickup scanning starts off. Staff collect by order number from **Queue**, and can share the tracking link or reveal its QR from the order confirmation.
 
 **At close:** the booth lead opens **Sales → Download CSV**, then **Close &lt;date&gt; and wipe guest data**. Order numbers restart at **001** at midnight SGT. From a terminal:
 
@@ -339,7 +343,7 @@ node scripts/reset-day.js --wipe-all    # full reset after a dry run (server sto
 ## ⚠️ Known limitations
 
 - If **every** device loses the network, the order and queue tablets can't see each other's new orders until one reconnects. Each keeps working on its own. Use a 4G router, or run order and queue on one tablet during an outage.
-- iPhone lock-screen push needs iOS 16.4+ and Add to Home Screen. Otherwise the open page chimes and turns black.
+- iPhone lock-screen push needs iOS 16.4+ and Add to Home Screen. The open page shows the ready status and can chime when sound is enabled.
 - No POS integration, by design: staff key in the total, and the CSV is the reconciliation bridge.
 - Shared PIN per role and a single server instance.
 

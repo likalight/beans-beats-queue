@@ -1,5 +1,5 @@
 /* Guest status page: follow one order live, get alerted when it's ready,
- * then share a story card for Singapore Red Cross Young Hearts. */
+ * then share a story card for the event's beneficiary. */
 (function () {
   'use strict';
   const token = (location.pathname.match(/^\/o\/([A-Za-z0-9_-]{16,64})/) || [])[1];
@@ -14,14 +14,19 @@
   let failures = 0;
   let alertsOn = false;
   let etaAt = null; // local timestamp the drink should be ready by
+  let contribution = null;
 
   if (!token) { $('title').textContent = 'Order not found'; return; }
 
-  // Pickup QR: the barista's tablet scans this to hand over the right drink.
-  try {
-    const qr = window.qrcode(0, 'M'); qr.addData('BB:' + token); qr.make();
-    $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
-  } catch (e) { $('pickup').hidden = true; }
+  function pickupCode() {
+    const container = $('qr');
+    if (container.firstChild) return true;
+    try {
+      const qr = window.qrcode(0, 'M'); qr.addData('BB:' + token); qr.make();
+      container.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      return true;
+    } catch (e) { return false; }
+  }
 
   function chime(times) {
     if (!audioCtx) return;
@@ -35,35 +40,11 @@
       });
     }
   }
-  let flashTimer = null;
-  function flashTitle(text) {
-    clearInterval(flashTimer); let on = false;
-    flashTimer = setInterval(() => { document.title = (on = !on) ? text : 'beans&beats'; }, 900);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearInterval(flashTimer); document.title = text; } }, { once: true });
-  }
-
-  // ---- confetti (canvas, no library)
-  const fx = $('fx'), fctx = fx.getContext('2d'); let parts = [], fxRaf = 0;
-  function confetti() {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const dpr = Math.min(2, devicePixelRatio || 1); fx.width = innerWidth * dpr; fx.height = innerHeight * dpr; fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cols = ['#fa6105', '#ff8a3d', '#ffffff', '#ffd2b3', '#a8693a'];
-    for (let i = 0; i < 140; i++) parts.push({ x: innerWidth / 2, y: innerHeight * 0.3, vx: (Math.random() - 0.5) * 14, vy: -4 - Math.random() * 10, s: 6 + Math.random() * 7, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, c: cols[i % cols.length], l: 120 + Math.random() * 60 });
-    if (!fxRaf) fxRaf = requestAnimationFrame(tick);
-  }
-  function tick() {
-    fctx.clearRect(0, 0, innerWidth, innerHeight);
-    for (const p of parts) { p.vy += 0.25; p.vx *= 0.985; p.x += p.vx; p.y += p.vy; p.r += p.vr; p.l--; fctx.save(); fctx.translate(p.x, p.y); fctx.rotate(p.r); fctx.globalAlpha = Math.min(1, p.l / 30); fctx.fillStyle = p.c; fctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); fctx.restore(); }
-    parts = parts.filter((p) => p.l > 0 && p.y < innerHeight + 30);
-    fxRaf = parts.length ? requestAnimationFrame(tick) : 0;
-  }
-
   function alertReady(d) {
     if (alerted) return;
     alerted = true;
     if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]);
-    chime(3); confetti();
-    flashTitle('READY · Order ' + d.no);
+    chime();
     if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
       navigator.serviceWorker.ready.then((reg) => reg.showNotification('Order ' + d.no + ' is ready', {
         body: (d.name ? d.name + ', y' : 'Y') + 'our drink is ready. Pick it up at the beans&beats counter.',
@@ -72,8 +53,6 @@
     }
   }
 
-  const LEVEL = { received: 0.1, queued: 0.12, making: 0.55, ready: 0.93, collected: 0.93, cancelled: 0 };
-  function setLevel(f) { $('liq').style.transform = 'translateY(' + (110 - f * 118).toFixed(1) + 'px)'; }
 
   function renderEta() {
     const el = $('eta');
@@ -83,12 +62,25 @@
   }
   setInterval(renderEta, 5000);
 
-  function renderImpact(imp) {
-    if (!imp) return;
-    const pct = Math.min(100, 100 * imp.total / (imp.goal || 1));
-    $('impact').hidden = false;
-    $('impact').innerHTML = '<div class="t"><span>Raised together for Red Cross Young Hearts</span><b class="num">$' + Math.round(imp.total / 100).toLocaleString('en-SG') + '</b></div>' +
-      '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div><div class="s"><span class="num">' + imp.cups.toLocaleString('en-SG') + ' cups poured, yours included</span><span class="num">goal $' + Math.round(imp.goal / 100).toLocaleString('en-SG') + '</span></div>';
+  const DEFAULT_CAUSE = 'Singapore Red Cross Young Hearts';
+  function boothFor(d) {
+    return Object.assign({ pickupScan: false, showDonation: true, showDonationGoal: true, donationName: DEFAULT_CAUSE }, (d && d.booth) || (snap && snap.booth));
+  }
+  function renderImpact(imp, booth) {
+    const el = $('impact');
+    el.hidden = !booth.showDonation || !booth.showDonationGoal || !imp;
+    el.replaceChildren();
+    if (el.hidden) return;
+    const heading = document.createElement('div'); heading.className = 't';
+    const label = document.createElement('span'); label.textContent = 'Event sales';
+    const total = document.createElement('b'); total.className = 'num'; total.textContent = '$' + (imp.total / 100).toLocaleString('en-SG', { maximumFractionDigits: 2 });
+    heading.append(label, total); el.append(heading);
+    if (booth.showDonationGoal && imp.goal > 0) {
+      const bar = document.createElement('div'); bar.className = 'bar';
+      const fill = document.createElement('i'); fill.style.width = Math.max(0, Math.min(100, 100 * imp.total / imp.goal)).toFixed(1) + '%';
+      bar.append(fill); el.append(bar);
+      const goal = document.createElement('div'); goal.className = 'small'; goal.textContent = 'Towards our $' + (imp.goal / 100).toLocaleString('en-SG', { maximumFractionDigits: 2 }) + ' sales goal'; el.append(goal);
+    }
   }
 
   function render(d, offline) {
@@ -96,37 +88,42 @@
     const name = d && d.name ? d.name : (snap && snap.name);
     const items = d && d.items ? d.items : (snap && snap.items);
     const status = (d && d.status) || 'received';
-    $('title').textContent = no ? 'Order ' + no : 'Your order';
+    const booth = boothFor(d);
+    const title = no ? 'Order ' + no : 'Your order';
+    $('title').textContent = title;
+    document.title = title + (status === 'ready' ? ' is ready' : '') + ' · beans&beats';
     $('desc').textContent = [name, items].filter(Boolean).join(', ');
     const rank = { received: 0, queued: 0, making: 1, ready: 2, collected: 3, cancelled: -1 }[status];
     $('s-received').className = rank >= 1 ? 'done' : 'now';
     $('s-making').className = rank >= 2 ? 'done' : rank === 1 ? 'now' : '';
     $('s-ready').className = rank >= 2 ? 'done' : '';
-    document.body.className = 'st-' + status + (rank === 2 ? ' ready' : '') + (/\biced\b/.test(items || '') ? ' iced' : ' hot');
-    setLevel(LEVEL[status] || 0.1);
-    $('pill').className = 'pill' + (rank >= 2 ? ' on' : ''); $('pill').hidden = rank < 2;
+    $('pill').hidden = rank < 2;
     $('pillTxt').textContent = rank === 3 ? 'Collected. Enjoy!' : 'Ready to collect';
-    document.querySelector('meta[name=theme-color]').content = rank === 2 ? '#141212' : '#ffffff';
-    $('pickup').classList.toggle('big', rank === 2);
-    $('pickTitle').textContent = rank === 2 ? 'Show this at the counter' : 'Your pickup code';
+    $('track').hidden = rank >= 2 || rank < 0;
+    const showPickup = rank === 2 && booth.pickupScan && pickupCode();
     if (d && d.etaMs && (status === 'queued' || status === 'making')) etaAt = Date.now() + d.etaMs; else if (rank !== 0 || !d) etaAt = rank >= 2 ? null : etaAt;
     if (rank >= 2 || rank < 0) etaAt = null;
     renderEta();
     if (d && d.ahead && (status === 'queued' || status === 'making')) $('eta').innerHTML += '<br>' + d.ahead + ' order' + (d.ahead === 1 ? '' : 's') + ' ahead of you';
     let msg;
-    if (status === 'received') msg = 'Order received at the counter. It is on its way to the bar.';
-    else if (status === 'queued') msg = 'You are in the queue. Enjoy the set, we will let you know the moment it is ready.';
+    if (status === 'received') msg = 'Order received.';
+    else if (status === 'queued') msg = 'You’re in the queue.';
     else if (status === 'making') msg = 'Your barista is making it now.';
-    else if (status === 'ready') msg = 'Your drink is ready. Pick it up at the counter and enjoy the set.';
-    else if (status === 'collected') msg = 'Enjoy! Thank you for supporting Singapore Red Cross Young Hearts.';
+    else if (status === 'ready') msg = showPickup ? 'Show your pickup code at the counter.' : 'Give your order number at the counter.';
+    else if (status === 'collected') msg = 'Enjoy your drink. Thanks for joining us.';
     else if (status === 'cancelled') msg = 'This order was cancelled. Please speak to the counter.';
-    $('msg').textContent = msg;
+    if ($('msg').textContent !== msg) $('msg').textContent = msg;
     $('off').hidden = !offline;
-    const done = rank >= 3 || rank < 0;
     renderAlerts(rank);
-    $('shareBtn').hidden = rank < 2;
-    $('pickup').hidden = done;
-    if (d && d.impact) renderImpact(d.impact);
+    $('pickup').hidden = !showPickup;
+    const canShare = !!no && rank >= 0 && booth.showDonation;
+    $('contribution').hidden = !canShare;
+    if (canShare) {
+      const cause = booth.donationName || DEFAULT_CAUSE;
+      $('cause').textContent = 'Your coffee supports ' + cause + '. Thank you.';
+      prepareContribution(cause);
+      renderImpact(d && d.impact, booth);
+    }
     if (rank === 2) alertReady({ no, name });
   }
 
@@ -151,46 +148,60 @@
 
   // ---- story card: 1080x1920 PNG drawn on the phone, shared with the native sheet
   function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
-  async function storyCard() {
-    const d = last || snap || {};
+  async function storyCard(beneficiary = boothFor(last).donationName || DEFAULT_CAUSE) {
     const W = 1080, H = 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const c = cv.getContext('2d');
-    try { await Promise.all([document.fonts.load('700 120px "Alte Haas Grotesk"'), document.fonts.load('900 300px "Archivo"')]); } catch (e) { /* fallback fonts */ }
-    const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#ff7a1f'); g.addColorStop(1, '#d94f00');
-    c.fillStyle = g; c.fillRect(0, 0, W, H);
-    c.fillStyle = 'rgba(255,255,255,.08)';
-    for (let i = 0; i < 70; i++) { c.beginPath(); c.arc((i * 137) % W, (i * 271) % H, 3 + (i % 5), 0, 7); c.fill(); }
-    try { const logo = await loadImg('/brand/logo-white.png'); c.drawImage(logo, 90, 110, 300, 300 * logo.height / logo.width); } catch (e) { /* no logo */ }
+    if (!c) return null;
+    try { await document.fonts.load('700 140px "Alte Haas Grotesk"'); } catch (e) { /* fallback fonts */ }
+    c.fillStyle = '#1d1b1b'; c.fillRect(0, 0, W, H);
+    try { const logo = await loadImg('/brand/logo-white.png'); c.drawImage(logo, 90, 130, 240, 240 * logo.height / logo.width); } catch (e) { /* no logo */ }
+    c.fillStyle = '#fa6105'; c.fillRect(90, 637, 110, 8);
     c.fillStyle = '#fff'; c.textBaseline = 'alphabetic';
-    c.font = '700 64px "Alte Haas Grotesk", Helvetica, Arial'; c.fillText('× Christmas Together 2026', 90, 560);
-    c.font = '700 150px "Alte Haas Grotesk", Helvetica, Arial';
-    c.fillText('I sipped', 84, 820); c.fillText('for Young', 84, 970); c.fillText('Hearts.', 84, 1120);
-    c.font = '900 270px "Archivo", Helvetica, Arial'; c.globalAlpha = 0.2; c.fillText(String(d.no || ''), 76, 1545); c.globalAlpha = 1;
-    c.font = '700 54px "Alte Haas Grotesk", Helvetica, Arial';
-    const drink = (d.items || 'coffee').slice(0, 40);
-    c.fillText('order ' + (d.no || '') + ' · ' + drink, 90, 1250);
-    c.fillStyle = '#1d1b1b'; const y = 1600; roundRect(c, 70, y, W - 140, 200, 40); c.fill();
-    c.fillStyle = '#fff'; c.font = '700 46px "Alte Haas Grotesk", Helvetica, Arial';
-    const imp = d.impact;
-    c.fillText(imp ? '$' + Math.round(imp.total / 100).toLocaleString('en-SG') + ' raised together, ' + imp.cups + ' cups' : 'Every dollar to Red Cross Young Hearts', 120, y + 88);
-    c.fillStyle = '#ffb27a'; c.font = '400 38px "Alte Haas Grotesk", Helvetica, Arial';
-    c.fillText('coffee clubbing · Hall F, Marina Bay Sands', 120, y + 150);
+    c.font = '700 140px "Alte Haas Grotesk", Helvetica, Arial';
+    c.fillText('I got coffee', 84, 830, 900); c.fillText('for a cause.', 84, 975, 900);
+    c.fillStyle = '#c6c3c2'; c.font = '400 42px "Alte Haas Grotesk", Helvetica, Arial';
+    c.fillText('My cup supported', 90, 1160);
+    c.fillStyle = '#fff'; c.font = '700 55px "Alte Haas Grotesk", Helvetica, Arial';
+    const words = beneficiary.split(/\s+/);
+    let line = '', lineY = 1248;
+    for (const word of words) {
+      const candidate = line ? line + ' ' + word : word;
+      if (c.measureText(candidate).width > 900 && line) { c.fillText(line, 90, lineY, 900); lineY += 68; line = word; } else line = candidate;
+    }
+    if (line) c.fillText(line, 90, lineY, 900);
+    c.fillStyle = '#797574'; c.fillRect(90, 1690, 900, 2);
+    c.fillStyle = '#c6c3c2'; c.font = '400 42px "Alte Haas Grotesk", Helvetica, Arial';
+    c.fillText('beans&beats · Christmas Together 2026', 90, 1785, 900);
     return new Promise((res) => cv.toBlob(res, 'image/png'));
   }
-  function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+  function prepareContribution(cause) {
+    if (contribution?.cause === cause) return;
+    const card = { cause, file: null };
+    contribution = card;
+    const button = $('shareBtn');
+    button.disabled = true;
+    // Prepare the file before the tap so the iOS share sheet keeps the user gesture.
+    storyCard(cause).then((blob) => {
+      if (blob) card.file = new File([blob], 'beansandbeats-contribution.png', { type: 'image/png' });
+    }).catch(() => {}).finally(() => {
+      if (contribution === card) button.disabled = !card.file;
+    });
+  }
   $('shareBtn').addEventListener('click', async () => {
-    const blob = await storyCard(); if (!blob) return;
-    const file = new File([blob], 'beansnbeats-young-hearts.png', { type: 'image/png' });
+    const file = contribution?.file;
+    if ($('contribution').hidden || !file) return;
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: 'Coffee for a cause at beans&beats × Christmas Together 2026 ☕' }); return; }
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text: 'My coffee at beans&beats supported ' + contribution.cause + '.' });
+        return;
+      }
     } catch (e) { if (e && e.name === 'AbortError') return; }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
   });
   window.__bbStory = storyCard; // used by screenshot script
 
   // ---- alerts. Browsers only allow notifications after one tap from the guest,
-  // so the page leads with a big "Turn on notifications" card the moment the
-  // QR is scanned, then falls back to chime + vibration + title flash.
+  // with a chime and vibration available while the page is open.
   //   alertsOn: false | 'push' (OS notification + Web Push) | 'sound' (page must stay open)
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
@@ -216,33 +227,26 @@
     const live = rank >= 0 && rank < 2;
     $('alerts').hidden = !live || st === 'on';
     $('alon').hidden = !live || st !== 'on';
-    $('alerts').classList.toggle('warn', st === 'denied' || st === 'failed');
     const steps = $('alSteps');
-    $('alertBtn').className = st === 'ios' ? 'btn' : 'btn go';
     steps.hidden = st !== 'ios';
     if (st === 'ask') {
-      $('alT').textContent = 'Get a ping when it\'s ready';
-      $('alS').textContent = 'We\'ll notify this phone the moment your drink is up, even if you close this page.';
+      $('alS').textContent = 'Get a notification when your drink is ready.';
       $('alBtnTxt').textContent = 'Turn on notifications';
     } else if (st === 'failed') {
-      $('alT').textContent = 'Lock-screen alerts didn\'t connect';
-      $('alS').textContent = 'Keep this page open for now: it will chime and vibrate when your drink is ready. (' + pushError + ')';
+      $('alS').textContent = 'Keep this page open for a sound alert, or try notifications again.';
       $('alBtnTxt').textContent = 'Try again';
     } else if (st === 'denied') {
-      $('alT').textContent = 'Notifications are blocked';
-      $('alS').textContent = 'Keep this page open and it will chime and vibrate instead. To allow them, tap the icon left of the web address, set Notifications to Allow, then reload.';
+      $('alS').textContent = 'Notifications are blocked. You can use a sound alert while this page is open.';
       $('alBtnTxt').textContent = 'Turn on sound alert';
     } else if (st === 'ios') {
-      $('alT').textContent = 'Get a ping on your iPhone';
       $('alS').textContent = 'iPhone only sends web notifications from apps on your home screen. It takes ten seconds:';
       steps.innerHTML = '<li>Tap <b>Share</b> <i class="ph-bold ph-export"></i> at the bottom of Safari</li><li>Tap <b>Add to Home Screen</b>, then <b>Add</b></li><li>Open <b>B&amp;B order</b> from your home screen and tap <b>Turn on notifications</b></li>';
       $('alBtnTxt').textContent = 'Use a sound alert instead';
     } else if (st === 'sound') {
-      $('alT').textContent = 'Get a sound alert';
-      $('alS').textContent = 'This browser can\'t show notifications. Keep this page open and it will chime and vibrate when your drink is ready.';
+      $('alS').textContent = 'Keep this page open to hear the sound alert.';
       $('alBtnTxt').textContent = 'Turn on sound alert';
     } else {
-      $('alonTxt').textContent = alertsOn === 'push' ? 'Notifications on. We\'ll buzz you when it\'s ready.' : 'Sound alert on. Keep this page open.';
+      $('alonTxt').textContent = alertsOn === 'push' ? 'Ready notification on.' : 'Sound alert on. Keep this page open.';
     }
   }
 

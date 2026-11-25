@@ -24,13 +24,12 @@
   header h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.01em; }
   header h1 small { display:block; font-size:13px; color:var(--mute); font-weight:400; margin-top:2px; }
   .ctl { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
-  .ctl button, .ctl a { display:inline-flex; align-items:center; gap:8px; padding:11px 16px; border-radius:99px; background:#211d1c; font-weight:700; font-size:14px; color:#f4efea; text-decoration:none; transition:transform .15s, background .2s; }
-  .ctl button:active { transform:scale(.96); }
-  .ctl .hot { background:var(--go); color:#fff; }
+  .ctl button, .ctl a { display:inline-flex; align-items:center; gap:8px; padding:11px 16px; border-radius:4px; background:#211d1c; font-weight:700; font-size:14px; color:#f4efea; text-decoration:none; }
+  .ctl .hot { background:#fff; color:var(--ink); }
   .ctl button.on { background:#fff; color:var(--ink); }
   .ctl button.danger.on { background:var(--warn); color:#fff; }
   main { display:grid; grid-template-columns: 1fr 1fr minmax(240px, .44fr); grid-template-rows: 1fr 1fr; gap:14px; padding:14px; min-height:0; }
-  .dev { background:var(--panel); border-radius:18px; box-shadow: inset 0 0 0 1px var(--line); display:grid; grid-template-rows:auto 1fr; min-height:0; overflow:hidden; position:relative; }
+  .dev { background:var(--panel); border-radius:4px; box-shadow: inset 0 0 0 1px var(--line); display:grid; grid-template-rows:auto 1fr; min-height:0; overflow:hidden; position:relative; }
   .dev .lbl { display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:13px; font-weight:700; color:#d6cfc9; }
   .dev .lbl small { color:var(--mute); font-weight:400; margin-left:auto; }
   .dev .lbl .badge { padding:3px 9px; border-radius:99px; background:#2a2523; font-size:11px; color:#bdb6b0; }
@@ -39,26 +38,25 @@
   .scr iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; background:#fff; }
   #dPhone { grid-column:3; grid-row:1 / span 2; }
   #dPhone .scr { background:transparent; display:grid; place-items:center; }
-  .phone { position:relative; border-radius:44px; padding:12px; background:#2a2523; box-shadow: 0 30px 80px -30px rgba(250,97,5,.45), inset 0 0 0 2px #3a3431; }
+  .phone { position:relative; border-radius:44px; padding:12px; background:#2a2523; box-shadow: inset 0 0 0 2px #3a3431; }
   .phone .glass { position:relative; overflow:hidden; border-radius:32px; background:#fbfbfa; }
   .phone .glass iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; }
   .phone .empty { position:absolute; inset:0; display:grid; place-content:center; text-align:center; padding:24px; color:#66615d; gap:10px; font-size:15px; line-height:1.4; }
   .phone .empty i { font-size:40px; color:var(--go); }
   #dLog { grid-column:2; grid-row:2; }
   .log { margin:0 10px 10px; overflow:auto; font-size:13px; display:grid; align-content:start; gap:4px; min-height:0; }
-  .log div { display:grid; grid-template-columns: 64px 92px 1fr; gap:8px; padding:7px 10px; border-radius:8px; background:#1e1a19; animation:in .35s ease; }
+  .log div { display:grid; grid-template-columns: 64px 92px 1fr; gap:8px; padding:7px 10px; border-radius:8px; background:#1e1a19; }
   .log div.burst { background:rgba(250,97,5,.16); }
   .log time { color:var(--mute); }
   .log b { color:var(--go-l); font-weight:700; }
   .log .sys { grid-template-columns: 64px 1fr; color:#d6cfc9; }
-  @keyframes in { from { opacity:0; transform:translateY(-4px); } }
   .gate { position:fixed; inset:0; background:rgba(14,12,12,.96); display:grid; place-content:center; justify-items:center; gap:16px; z-index:10; text-align:center; padding:20px; }
   .gate img { height:120px; }
   .gate h2 { margin:0; font-size:34px; }
   .gate p { margin:0; color:#bdb6b0; max-width:52ch; line-height:1.5; }
   .gate form { display:flex; gap:10px; }
   .gate input { font:inherit; font-size:22px; padding:12px 16px; width:170px; border-radius:12px; border:0; text-align:center; letter-spacing:.3em; }
-  .gate .go { background:var(--go); color:#fff; padding:14px 24px; border-radius:99px; font-weight:700; font-size:17px; display:inline-flex; gap:8px; align-items:center; }
+  .gate .go { background:#fff; color:var(--ink); padding:14px 24px; border-radius:4px; font-weight:700; font-size:17px; display:inline-flex; gap:8px; align-items:center; }
   .gate .err { color:var(--warn); min-height:1.2em; }
   .gate ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; color:#bdb6b0; text-align:left; }
   .gate li i { color:var(--go); margin-right:6px; }
@@ -78,7 +76,7 @@
 </header>
 <main>
   <section class="dev" id="dOrder"><div class="lbl"><i class="ph-bold ph-device-tablet"></i>Order tablet · counter <span class="badge" id="bOrder">online</span><small>tap drinks, take payment on POS</small></div><div class="scr" data-w="1280" data-h="800"><iframe id="fOrder" title="Order tablet" allow="camera; autoplay"></iframe></div></section>
-  <section class="dev" id="dBoard"><div class="lbl"><i class="ph-bold ph-television-simple"></i>Ready board · TV at the booth<small>chimes, calls out, moves with the music</small></div><div class="scr" data-w="1920" data-h="1080"><iframe id="fBoard" title="Ready board" allow="autoplay; microphone; fullscreen"></iframe></div></section>
+  <section class="dev" id="dBoard"><div class="lbl"><i class="ph-bold ph-television-simple"></i>Ready board · TV at the booth<small>ready orders and optional sound</small></div><div class="scr" data-w="1920" data-h="1080"><iframe id="fBoard" title="Ready board" allow="autoplay; fullscreen"></iframe></div></section>
   <section class="dev" id="dQueue"><div class="lbl"><i class="ph-bold ph-coffee"></i>Barista queue · bar<small>one tap per step</small></div><div class="scr" data-w="1280" data-h="800"><iframe id="fQueue" title="Barista queue" allow="camera; autoplay"></iframe></div></section>
   <section class="dev" id="dLog"><div class="lbl"><i class="ph-bold ph-broadcast"></i>Sync feed · what the server sees<small id="logStat">connecting…</small></div><div class="log" id="log"></div></section>
   <section class="dev" id="dPhone"><div class="lbl"><i class="ph-bold ph-device-mobile"></i>Guest phone<small id="phoneNo">no app, just a QR</small></div>

@@ -16,6 +16,8 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const TZ = 'Asia/Singapore';
   const STATUSES = ['queued', 'making', 'ready', 'collected', 'cancelled'];
+  const DEFAULT_DONATION_NAME = 'Singapore Red Cross Young Hearts';
+  const DEFAULT_GOAL = 500000;
 
   // Ops each role may submit. Guests never submit ops.
   const ROLE_OPS = {
@@ -231,7 +233,22 @@
     for (const x of ahead.concat([o])) if (x.status === 'making') ms -= Math.min(perCup * orderCups(x) * 0.8, nowTs - x.statusAt);
     return Math.max(30000, ms);
   }
-  // Charity impact: every dollar goes to Singapore Red Cross Young Hearts.
+  function boothSettings(state) {
+    const settings = state.settings;
+    return {
+      pickupScan: settings.pickupScan === true,
+      showDonation: settings.showDonation !== false,
+      showDonationGoal: settings.showDonationGoal !== false,
+      donationName: (typeof settings.donationName === 'string' && settings.donationName.trim()) || DEFAULT_DONATION_NAME,
+    };
+  }
+
+  function donationGoal(state) {
+    const goal = state.settings.goal;
+    return Number.isSafeInteger(goal) && goal > 0 ? goal : DEFAULT_GOAL;
+  }
+
+  // Progress is based on event sales. Profits go to the donation beneficiary.
   function impact(state, nowTs) {
     const day = sgDay(nowTs);
     let cups = 0, total = 0, cupsToday = 0, totalToday = 0;
@@ -241,7 +258,7 @@
       cups += c; total += t;
       if (o.day === day) { cupsToday += c; totalToday += t; }
     }
-    return { cups, total, cupsToday, totalToday, goal: state.settings.goal || 500000 };
+    return { cups, total, cupsToday, totalToday, goal: donationGoal(state) };
   }
   const STOCK = [
     { key: 'oat', label: 'Oat milk', uses: (it) => !!(it.milkName && it.milkName !== 'Milk') },
@@ -299,5 +316,5 @@
   }
 
   return { TZ, STATUSES, ROLE_OPS, sgDay, sgTime, fmtNo, money, emptyState, apply, report, reportCsv, daysCsv,
-    orderTotal, orderCups, describeItems, pace, eta, impact, stockLevels, insights };
+    orderTotal, orderCups, describeItems, pace, eta, boothSettings, donationGoal, impact, stockLevels, insights };
 });

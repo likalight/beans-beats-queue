@@ -15,134 +15,81 @@
 <style>
   @font-face { font-family: "Alte Haas Grotesk"; src: url("/brand/AlteHaasGroteskRegular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
   @font-face { font-family: "Alte Haas Grotesk"; src: url("/brand/AlteHaasGroteskBold.woff2") format("woff2"); font-weight: 700; font-display: swap; }
-  @font-face { font-family:"Archivo"; src:url("/vendor/fonts/archivo.woff2") format("woff2"); font-weight:100 900; font-stretch:62% 125%; font-display:swap; }
-  :root { --ink:#1d1b1b; --mute:#6b6662; --line:#e8e4e0; --go:#fa6105; --go-l:#ff8a3d; --coffee:#a8693a; --ease:cubic-bezier(.16,1,.3,1);
+  :root { --ink:#1d1b1b; --mute:#6d6a69; --line:#dddcda;
     font-family:"Alte Haas Grotesk","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
-  body { margin:0; background:#fff; min-height:100dvh; transition: background .6s ease, color .6s ease; }
-  .num { font-family:"Archivo","Helvetica Neue",sans-serif; font-variant-numeric:tabular-nums; }
-  .wrap { max-width:440px; margin:0 auto; padding:18px 20px 40px; display:grid; gap:16px; }
-  .top { display:flex; align-items:center; gap:10px; color:var(--mute); font-size:13px; }
+  body { margin:0; background:#fff; min-height:100dvh; }
+  .num { font-variant-numeric:tabular-nums; }
+  .wrap { max-width:460px; margin:0 auto; padding:18px 24px 40px; display:grid; gap:22px; }
+  .top { display:flex; align-items:center; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--line); color:var(--mute); font-size:13px; }
   .top img { height:30px; }
-  body.ready .top img { filter:invert(1); }
-  .hero { display:grid; justify-items:center; gap:4px; padding-top:6px; }
-  .cup { width:190px; height:190px; overflow:visible; }
-  .cup .outline { fill:none; stroke:currentColor; stroke-width:5; stroke-linecap:round; stroke-linejoin:round; }
-  #liq { transition: transform 1.6s var(--ease); }
-  #wave { animation: wave 2.6s linear infinite; }
-  @keyframes wave { to { transform: translateX(-80px); } }
-  .steam path { fill:none; stroke:currentColor; stroke-width:4; stroke-linecap:round; opacity:0; }
-  body.hot.st-making .steam path, body.hot.st-ready .steam path { animation: steam 2.4s ease-in-out infinite; }
-  .steam path:nth-child(2) { animation-delay:.6s !important; } .steam path:nth-child(3) { animation-delay:1.2s !important; }
-  @keyframes steam { 0% { opacity:0; transform:translateY(8px); } 40% { opacity:.55; } 100% { opacity:0; transform:translateY(-14px); } }
-  .ice rect { fill:#fff; fill-opacity:.75; stroke:#fff; stroke-width:2; }
-  .ice { animation: bob 3s ease-in-out infinite; }
-  @keyframes bob { 50% { transform: translateY(-3px); } }
-  body:not(.iced) .ice { display:none; }
-  body.st-making .cup { animation: jiggle 1.8s ease-in-out infinite; }
-  @keyframes jiggle { 50% { transform: rotate(-1.2deg); } }
-  body.st-ready .cup { animation: popin .9s var(--ease); }
-  @keyframes popin { 0% { transform:scale(.8); } 60% { transform:scale(1.08); } }
-  h1 { font-size:58px; margin:0; letter-spacing:-0.05em; font-weight:900; font-stretch:112%; line-height:.95; text-align:center; }
+  .hero { display:grid; justify-items:center; gap:12px; padding:28px 0 8px; }
+  h1 { font-size:clamp(38px, 11vw, 52px); margin:0; letter-spacing:-0.055em; font-weight:700; line-height:.95; text-align:center; }
   .desc { color:#3d3936; font-size:18px; text-align:center; }
   .eta { text-align:center; font-size:15px; color:var(--mute); min-height:22px; }
+  .eta:empty { display:none; }
   .eta b { color:var(--ink); font-size:22px; }
   .track { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-  .track div { display:grid; gap:7px; font-size:13px; font-weight:700; color:#b3ada8; }
-  .track i { display:block; height:6px; border-radius:99px; background:#eee9e5; overflow:hidden; position:relative; }
-  .track .done { color:var(--ink); } .track .done i { background:var(--ink); }
-  .track .now { color:var(--ink); } .track .now i::after { content:""; position:absolute; inset:0; width:40%; background:var(--go); border-radius:99px; animation: slide 1.4s ease-in-out infinite; }
-  @keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(260%); } }
-  .pill { display:flex; gap:8px; align-items:center; justify-content:center; background:#f3f0ed; color:#9c958f; border-radius:999px; padding:16px; text-align:center; font-weight:700; font-size:18px; }
-  .pill.on { background:var(--go); color:#fff; animation:pop .5s ease; box-shadow:0 0 0 8px rgba(250,97,5,.18); font-size:21px; padding:20px; }
-  @keyframes pop { 0% { transform:scale(.9); } 60% { transform:scale(1.05); } }
+  .track div { display:grid; gap:7px; font-size:13px; font-weight:700; color:var(--mute); }
+  .track i { display:block; height:6px; background:var(--line); }
+  .track .done, .track .now { color:var(--ink); }
+  .track .done i, .track .now i { background:var(--ink); }
+  .pill { display:flex; gap:8px; align-items:center; justify-content:center; background:var(--ink); color:#fff; border-radius:4px; padding:16px; text-align:center; font-weight:700; font-size:18px; }
   .msg { color:#3d3936; font-size:16px; line-height:1.45; text-align:center; }
-  .btn { font:inherit; font-weight:700; padding:16px; border-radius:999px; border:0; background:#f3f0ed; color:var(--ink); cursor:pointer; font-size:16px; display:flex; gap:8px; align-items:center; justify-content:center; transition: transform .15s; width:100%; }
-  .btn:active { transform:scale(.97); }
-  .btn.dark { background:var(--ink); color:#fff; }
-  .btn.go { background:var(--go); color:#fff; }
+  .btn { font:inherit; font-weight:700; padding:16px; border-radius:4px; border:1px solid var(--ink); background:#fff; color:var(--ink); cursor:pointer; font-size:16px; display:flex; gap:8px; align-items:center; justify-content:center; width:100%; }
+  .btn:disabled { opacity:.55; cursor:wait; }
+  :focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
   .small { font-size:12px; color:var(--mute); line-height:1.5; }
-  .impact { background:#1d1b1b; color:#fff; border-radius:20px; padding:16px 18px; display:grid; gap:10px; }
-  .impact .t { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13px; color:#cfc8c2; }
-  .impact .t b { font-size:28px; color:#fff; letter-spacing:-0.03em; }
-  .impact .bar { height:8px; background:#3a3431; border-radius:99px; overflow:hidden; }
-  .impact .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--go),var(--go-l)); border-radius:99px; transition:width 1.4s var(--ease); }
-  .impact .s { font-size:12px; color:#9c958f; display:flex; justify-content:space-between; }
+  .contribution { border-top:1px solid var(--line); padding-top:20px; display:grid; gap:12px; }
+  .contribution p { margin:0; font-size:14px; line-height:1.5; color:var(--mute); overflow-wrap:anywhere; }
+  .impact { margin-top:4px; display:grid; gap:10px; }
+  .impact .t { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13px; color:var(--mute); overflow-wrap:anywhere; }
+  .impact .t b { font-size:24px; color:var(--ink); letter-spacing:-0.03em; }
+  .impact .bar { height:8px; background:var(--line); overflow:hidden; }
+  .impact .bar i { display:block; height:100%; background:var(--ink); }
   .pickup { border-top:1px solid var(--line); padding-top:18px; display:grid; gap:10px; justify-items:center; text-align:center; }
-  .pickup .qr { width:200px; height:200px; } .pickup .qr svg { width:100%; height:100%; }
-  .pickup.big .qr { width:250px; height:250px; }
+  .pickup .qr { width:min(250px, 100%); aspect-ratio:1; }
+  .pickup .qr svg { width:100%; height:100%; }
   .offline { background:#fff3e8; color:#8a3a00; font-size:13px; padding:8px 12px; border-radius:10px; font-weight:700; }
-  body.ready { background:#141212; color:#fff; }
-  body.ready .desc, body.ready .msg, body.ready .small, body.ready .eta, body.ready .top { color:#d0c9c3; }
-  body.ready h1 { color:var(--go-l); }
-  body.ready .track .done { color:#fff; } body.ready .track .done i { background:var(--go); }
-  body.ready .pickup { border-color:#3a3431; }
-  body.ready .pickup .qr { background:#fff; padding:10px; border-radius:14px; }
-  body.ready .impact { background:#221e1c; }
-  body.ready .btn { background:#2a2523; color:#fff; } body.ready .btn.go { background:var(--go); }
-  .alerts { border:2px solid var(--go); border-radius:22px; padding:16px; display:grid; gap:14px; background:#fff7f1; animation: rise .6s var(--ease); }
-  @keyframes rise { from { opacity:0; transform:translateY(8px); } }
-  .al-hd { display:flex; gap:12px; align-items:flex-start; }
-  .al-hd b { display:block; font-size:18px; margin-bottom:3px; }
-  .al-hd span:not(.al-ic) { display:block; font-size:14px; color:#5a544f; line-height:1.4; }
-  .al-ic { flex:none; width:40px; height:40px; border-radius:50%; background:var(--go); color:#fff; display:grid; place-items:center; font-size:20px; animation: ring 2.4s ease-in-out infinite; }
-  @keyframes ring { 0%,60%,100% { transform:rotate(0); } 65% { transform:rotate(14deg); } 75% { transform:rotate(-12deg); } 85% { transform:rotate(6deg); } }
+  .alerts { display:grid; gap:10px; }
+  .alert-note { margin:0; }
   .al-steps { margin:0; padding-left:20px; font-size:14px; line-height:1.55; color:#3d3936; }
   .al-steps b { color:var(--ink); }
-  .alerts.warn { border-color:#e2b48f; background:#fffaf5; }
-  .alerts.warn .al-ic { background:#8a3a00; animation:none; }
-  .alon { display:flex; gap:8px; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:#1f6b3a; background:#eaf6ee; border-radius:999px; padding:10px 14px; }
+  .alon { display:flex; gap:8px; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--mute); padding:0; }
   .alon i { font-size:18px; }
   .linkbtn { font:inherit; font-size:13px; background:none; border:0; color:inherit; text-decoration:underline; cursor:pointer; padding:0 0 0 4px; opacity:.8; }
-  body.ready .alon { background:#1f2a22; color:#9be3b3; }
-  #fx { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:9; }
   a { color:inherit; }
-  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 </head>
-<body class="st-received">
-<canvas id="fx" aria-hidden="true"></canvas>
+<body>
 <div class="wrap" id="g">
-  <div class="top"><img src="/brand/mark-ink.png" alt="beans&amp;beats"><span>beans&amp;beats café · Christmas Together 2026</span></div>
+  <div class="top"><img src="/brand/mark-ink.png" alt=""><span>beans&amp;beats café · Christmas Together 2026</span></div>
   <div class="hero">
-    <svg class="cup" viewBox="0 0 200 200" aria-hidden="true">
-      <defs><clipPath id="cupClip"><path d="M52 62 H148 L138 172 Q137 180 129 180 H71 Q63 180 62 172 Z"/></clipPath></defs>
-      <g class="steam"><path d="M80 48 q-8 -10 0 -20 t0 -20"/><path d="M100 46 q-8 -10 0 -20 t0 -20"/><path d="M120 48 q-8 -10 0 -20 t0 -20"/></g>
-      <g clip-path="url(#cupClip)">
-        <g id="liq" style="transform: translateY(108px)">
-          <path id="wave" fill="var(--coffee)" d="M0 70 q20 -10 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 V260 H0 Z"/>
-          <rect x="0" y="86" width="300" height="200" fill="#8a5129" opacity=".35"/>
-        </g>
-        <g class="ice"><rect x="72" y="112" width="24" height="24" rx="5" transform="rotate(-12 84 124)"/><rect x="104" y="124" width="22" height="22" rx="5" transform="rotate(14 115 135)"/><rect x="86" y="146" width="20" height="20" rx="5" transform="rotate(6 96 156)"/></g>
-      </g>
-      <path class="outline" d="M52 62 H148 L138 172 Q137 180 129 180 H71 Q63 180 62 172 Z"/>
-      <path class="outline" d="M146 84 q28 2 24 30 t-30 26"/>
-      <path class="outline" d="M44 62 H156"/>
-    </svg>
     <h1 id="title" class="num">Your order</h1>
     <div class="desc" id="desc"></div>
   </div>
   <div class="eta" id="eta"></div>
   <div class="offline" id="off" hidden>No signal right now. We'll keep checking and update this page automatically.</div>
-  <div class="track"><div id="s-received"><i></i>Received</div><div id="s-making"><i></i>Making</div><div id="s-ready"><i></i>Ready</div></div>
-  <div class="pill" id="pill"><i class="ph-bold ph-bell-ringing"></i><span id="pillTxt">Ready to collect</span></div>
-  <div class="msg" id="msg">Hang tight, we'll let you know the moment it's ready.</div>
+  <div class="track" id="track"><div id="s-received"><i></i>Received</div><div id="s-making"><i></i>Making</div><div id="s-ready"><i></i>Ready</div></div>
+  <div class="pill" id="pill" hidden><span id="pillTxt">Ready to collect</span></div>
+  <div class="msg" id="msg" role="status">Checking your order…</div>
   <div class="alerts" id="alerts" hidden>
-    <div class="al-hd"><span class="al-ic"><i class="ph-bold ph-bell-simple-ringing"></i></span><div><b id="alT">Get a ping when it's ready</b><span id="alS">We'll notify this phone the moment your drink is up, even if you close this page.</span></div></div>
+    <p class="small alert-note" id="alS"></p>
     <ol class="al-steps" id="alSteps" hidden></ol>
-    <button class="btn go" id="alertBtn"><i class="ph-bold ph-bell-ringing"></i><span id="alBtnTxt">Turn on notifications</span></button>
+    <button class="btn" id="alertBtn"><i class="ph-bold ph-bell-ringing"></i><span id="alBtnTxt">Turn on notifications</span></button>
   </div>
   <div class="alon" id="alon" hidden><i class="ph-bold ph-check-circle"></i><span id="alonTxt">Notifications on. We'll buzz you when it's ready.</span><button class="linkbtn" id="testBtn">Test</button></div>
-  <button class="btn go" id="shareBtn" hidden><i class="ph-bold ph-share-fat"></i>Share my cup for Young Hearts</button>
-  <div class="pickup" id="pickup">
-    <div style="font-weight:700" id="pickTitle">Your pickup code</div>
+  <div class="pickup" id="pickup" hidden>
     <div class="qr" id="qr"></div>
-    <div class="small">Show this at the counter when you collect. No receipt needed.</div>
   </div>
-  <div class="impact" id="impact" hidden></div>
-  <div class="small"><a href="/m">See the menu</a>. All profits go to Singapore Red Cross Young Hearts.</div>
-  <div class="small">Privacy: we only keep your first name (and mobile, if you chose to give it) to run today's queue. Your mobile is deleted when you collect; names are deleted at the end of each event day. Questions: general@beansnbeats.com</div>
+  <section class="contribution" id="contribution" hidden>
+    <p id="cause"></p>
+    <button class="btn" id="shareBtn"><i class="ph-bold ph-share-fat" aria-hidden="true"></i>Share my contribution</button>
+    <div class="impact" id="impact" hidden></div>
+  </section>
+  <div class="small"><a href="/m">See the menu</a> · <a href="mailto:general@beansnbeats.com">Contact us</a></div>
+  <details class="small"><summary>Privacy</summary><div>We only keep your first name (and mobile, if you chose to give it) to run today's queue. Your mobile is deleted when you collect; names are deleted at the end of each event day. Questions: general@beansnbeats.com</div></details>
 </div>
 <script src="/vendor/qrcode.js"></script>
 <script src="/guest.js"></script>

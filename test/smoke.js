@@ -56,7 +56,26 @@ const op = (type, payload, at) => ({ opId: Math.random().toString(36).slice(2) +
     // Guest tracking (public, no auth).
     let g = await j('/api/track/' + tok1);
     assert.strictEqual(g.body.no, '001'); assert.strictEqual(g.body.status, 'queued'); assert.ok(!('mobile' in g.body), 'no mobile leak');
+    assert.deepStrictEqual(g.body.booth, {
+      pickupScan: false, showDonation: true, showDonationGoal: true, donationName: 'Singapore Red Cross Young Hearts',
+    });
+    assert.strictEqual(g.body.impact.goal, 500000);
     assert.strictEqual((await j('/api/track/' + 'z'.repeat(20))).status, 404);
+
+    const setBooth = (payload, token) => j('/api/sync', {
+      method: 'POST', body: JSON.stringify({ ops: [op('settings.update', payload)], since: 0 }),
+    }, token);
+    await setBooth({ pickupScan: true }, bar.token);
+    assert.strictEqual((await j('/api/track/' + tok1)).body.booth.pickupScan, false, 'baristas cannot edit booth settings');
+    await setBooth({ pickupScan: true, showDonationGoal: false, donationName: 'Community Fund', goal: 625050 }, lead.token);
+    g = await j('/api/track/' + tok1);
+    assert.deepStrictEqual(g.body.booth, { pickupScan: true, showDonation: true, showDonationGoal: false, donationName: 'Community Fund' });
+    assert.strictEqual(g.body.impact.goal, 625050);
+    await setBooth({ goal: -10 }, lead.token);
+    assert.strictEqual((await j('/api/track/' + tok1)).body.impact.goal, 625050, 'invalid goal does not change stored settings');
+    await setBooth({ showDonation: false }, lead.token);
+    assert.strictEqual((await j('/api/track/' + tok1)).body.impact, null);
+    assert.strictEqual((await j('/api/menu')).body.showDonation, false);
 
     // Conflict: an older "making" arriving after a newer "ready" must not win.
     const ready = op('order.status', { id: 'o1', status: 'ready' }, Date.now());
@@ -88,6 +107,8 @@ const op = (type, payload, at) => ({ opId: Math.random().toString(36).slice(2) +
     await stop(); await start();
     s = (await j('/api/state', {}, lead.token)).body.state;
     assert.strictEqual(Core.report(s, Core.sgDay()).total, 2300, 'report survives restart');
+    assert.strictEqual(Core.boothSettings(s).showDonation, false, 'booth settings survive restart');
+    assert.strictEqual(Core.donationGoal(s), 625050);
     console.log('All smoke tests passed');
   } finally {
     await stop();
