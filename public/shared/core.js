@@ -18,11 +18,12 @@
   const STATUSES = ['queued', 'making', 'ready', 'collected', 'cancelled'];
   const DEFAULT_DONATION_NAME = 'Singapore Red Cross Young Hearts';
   const DEFAULT_GOAL = 500000;
+  const BOARD_SHARE_MS = 90000;
 
   // Ops each role may submit. Guests never submit ops.
   const ROLE_OPS = {
-    barista: ['order.create', 'order.status'],
-    lead: ['order.create', 'order.status', 'menu.upsert', 'menu.delete', 'day.close', 'settings.update'],
+    barista: ['order.create', 'order.status', 'board.share'],
+    lead: ['order.create', 'order.status', 'board.share', 'menu.upsert', 'menu.delete', 'day.close', 'settings.update'],
   };
 
   function sgDay(ts) {
@@ -54,6 +55,12 @@
   }
   function orderCups(o) {
     return (o.items || []).reduce((s, it) => s + (it.qty || 1), 0);
+  }
+
+  function boardShareOrder(state, now, share = state.boardShare) {
+    if (!share || now - share.at >= BOARD_SHARE_MS) return null;
+    const order = state.orders[share.id];
+    return order?.token && !state.closedDays[order.day] && order.status !== 'collected' && order.status !== 'cancelled' ? order : null;
   }
   function describeItems(o) {
     return (o.items || []).map((it) => {
@@ -105,6 +112,12 @@
         o.statusOp = op.opId;
         o.times = Object.assign({}, o.times, { [p.status]: op.at });
         if (p.status === 'collected' || p.status === 'cancelled') o.mobile = null; // PDPA: drop once done
+        return true;
+      }
+      case 'board.share': {
+        const prev = state.boardShare;
+        if (prev && !newer(op, prev.at, prev.opId)) return false;
+        state.boardShare = { id: p.id, at: op.at, opId: op.opId };
         return true;
       }
       case 'menu.upsert': {
@@ -315,6 +328,6 @@
     return out;
   }
 
-  return { TZ, STATUSES, ROLE_OPS, sgDay, sgTime, fmtNo, money, emptyState, apply, report, reportCsv, daysCsv,
+  return { TZ, STATUSES, ROLE_OPS, BOARD_SHARE_MS, boardShareOrder, sgDay, sgTime, fmtNo, money, emptyState, apply, report, reportCsv, daysCsv,
     orderTotal, orderCups, describeItems, pace, eta, boothSettings, donationGoal, impact, stockLevels, insights };
 });

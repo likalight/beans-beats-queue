@@ -1,6 +1,6 @@
 /* Service worker: keeps the app shell available with no network and shows
  * Web Push "your drink is ready" notifications. API calls are never cached. */
-const VERSION = 'bb-v9';
+const VERSION = 'bb-v11';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/shared/core.js', '/vendor/qrcode.js', '/vendor/jsqr.js',
   '/guest.html', '/guest.js', '/menu.html', '/manifest.webmanifest', '/guest.webmanifest', '/icons/icon.svg',
   '/vendor/fonts/archivo.woff2', '/vendor/ph/bold/style.css', '/vendor/ph/bold/Phosphor-Bold.woff2',

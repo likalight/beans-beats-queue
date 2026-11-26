@@ -193,9 +193,9 @@
     LS.set('counter.' + day, next);
     return next;
   }
-  function qrSvg(text) {
+  function qrSvg(text, margin = 2) {
     const qr = window.qrcode(0, 'L'); qr.addData(text); qr.make();
-    return qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    return qr.createSvgTag({ cellSize: 4, margin, scalable: true });
   }
 
   // ------------------------------------------------------------------ render
@@ -233,6 +233,7 @@
     el.className = 'net' + (!off && (!n || publicScreen) ? ' hidden' : off ? ' off' : ' pend');
     el.setAttribute('role', 'status');
     el.innerHTML = publicScreen ? 'Orders may be out of date. Check with the counter.' : ic(off ? 'wifi-slash' : 'arrows-clockwise') + (off ? 'Offline · saved on this device' : 'Syncing') + (n ? ' · ' + n + ' pending' : '');
+    renderBoardShareStatus();
   }
   function renderSynced() {
     // Keep the active field and shared-link sheet mounted during background sync.
@@ -435,19 +436,32 @@
     tellParent({ bb: 'order', url: guestUrl(o), no: C.fmtNo(o.no), manual: true });
     showConfirm(o);
   }
-  let modal = '', modalTimer = null;
+  let modal = '', modalTimer = null, boardShareRequest = null;
   function showConfirm(o) {
     const url = guestUrl(o);
+    boardShareRequest = null;
     modal = '<div class="modal" data-act="closeModal"><div class="sheet confirmation" role="dialog" aria-modal="true" aria-label="Order sent">' +
       '<div class="paid">' + ic('check-circle') + 'Sent to bar · $' + C.money(C.orderTotal(o)) + ' on POS (' + (o.pay === 'card' ? 'card' : 'PayNow') + ')</div>' +
       '<div class="mute">Order number</div><div class="big num">' + C.fmtNo(o.no) + '</div>' +
       '<div class="who">' + esc(o.name) + ', ' + esc(C.describeItems(o)) + '</div>' +
       '<div class="tracking-share"><label class="field hidden" id="trackingField">Tracking link<input id="trackingLink" type="text" readonly value="' + esc(url) + '" aria-label="Order tracking link"></label>' +
       '<div class="share-actions"><button class="btn line" data-act="copyTracking">' + (navigator.share ? ic('share-fat') + 'Share link' : ic('copy') + 'Copy link') + '</button><button class="btn line" data-act="showTrackingQr" aria-expanded="false" aria-controls="trackingQr">' + ic('qr-code') + 'Show QR</button></div>' +
-      '<div id="trackingQr" class="hidden"><div class="qr"></div><p class="mute">Scan to follow this order.</p></div><div id="copyStatus" class="mute" role="status"></div></div>' +
+      '<div id="trackingQr" class="hidden"><div class="qr"></div><p class="mute">Scan to follow this order.</p></div><div id="copyStatus" class="mute" role="status"></div>' +
+      (C.boardShareOrder ? '<button class="btn line" id="shareBoard" data-act="shareBoard" data-id="' + esc(o.id) + '">' + ic('television-simple') + 'Show QR on Ready Board</button><div id="boardShareStatus" class="mute" role="status"></div>' : '') + '</div>' +
       '<button class="btn dark" data-act="closeModal">' + ic('arrow-right') + 'Next order</button></div></div>';
     render();
     clearTimeout(modalTimer); modalTimer = setTimeout(() => { modal = ''; render(); }, 45000);
+  }
+
+  function renderBoardShareStatus() {
+    const status = $('#boardShareStatus');
+    if (!status || !boardShareRequest) return;
+    const pending = S.outbox.some((op) => op.opId === boardShareRequest.opId);
+    const active = S.base.boardShare?.opId === boardShareRequest.opId && C.boardShareOrder(S.base, now());
+    let msg = active ? 'QR sent to the Ready Board.' : 'QR unavailable on the board. Send it again if needed.';
+    if (pending) msg = S.online && !S.simOffline ? 'Sending QR…' : 'Waiting for connection to send QR.';
+    if (status.textContent !== msg) status.textContent = msg;
+    $('#shareBoard').disabled = pending && now() - boardShareRequest.at < C.BOARD_SHARE_MS;
   }
 
   // ---- queue
@@ -535,6 +549,7 @@
   // ---- board (public screen)
   let lastReady = new Set();
   let boardFirst = true;
+  let boardShareTimer;
   function chime() {
     try {
       const ctx = chime.ctx || (chime.ctx = new (window.AudioContext || window.webkitAudioContext)());
@@ -561,7 +576,8 @@
         '<header class="bhd"><div class="blogo"><img src="/brand/logo-white.png" alt="beans&amp;beats"><div><b>ready board</b><small>Christmas Together 2026</small></div></div>' +
         '<div class="meter" id="meter"></div><div id="net" role="status"></div></header>' +
         '<div class="cols"><section class="ready-list"><h2>Ready to collect</h2><div id="bReady"></div></section>' +
-        '<section class="making"><h2>Making</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section></div>' +
+        '<section class="making"><h2>Making</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section>' +
+        '<aside id="bTracking" class="board-tracking hidden" aria-label="Scan to track"></aside></div>' +
         '<footer><span id="boardPickup"></span>' +
         '<details class="stage-tools"><summary aria-label="Display controls">Display controls</summary><div class="stage-ctl"><button data-act="stageSound" id="vBtn" aria-pressed="false">' + ic('speaker-slash') + 'Sound</button><button data-act="stageFull">' + ic('corners-out') + 'Full screen</button><button data-go="queue">' + ic('x') + 'Exit</button></div></details></footer>' +
         '</div>';
@@ -586,7 +602,20 @@
     if (!boardFirst && sound) Stage.announce(ready.filter((o) => !lastReady.has(o.id)).reverse());
     if (S.seq || S.lastOk) boardFirst = false; // baseline = first render with real data
     lastReady = new Set(ready.map((o) => o.id));
+    renderBoardTracking();
     renderNet();
+  }
+
+  function renderBoardTracking() {
+    clearTimeout(boardShareTimer);
+    const card = $('#bTracking');
+    const order = window.qrcode && C.boardShareOrder?.(S.base, now());
+    card.classList.toggle('hidden', !order);
+    card.parentElement.classList.toggle('with-tracking', !!order);
+    if (!order) { card.replaceChildren(); return; }
+    card.innerHTML = '<h2>Scan to track</h2><strong class="num">Order ' + C.fmtNo(order.no) + '</strong>' +
+      '<div class="board-qr">' + qrSvg(guestLink(order), 16) + '</div>';
+    boardShareTimer = setTimeout(() => { if (route === 'board') renderBoardTracking(); }, S.base.boardShare.at + C.BOARD_SHARE_MS - now() + 10);
   }
   setInterval(() => { if (S.token && (route === 'queue')) render(); }, 30000);
 
@@ -703,11 +732,12 @@
     clearTimeout(renderDisplay.t);
     if (latest) renderDisplay.t = setTimeout(() => { if (route === 'display') render(); }, 90000 - (now() - latest.createdAt) + 200);
   }
+  function guestLink(o) { return location.origin + '/o/' + o.token; }
   function guestUrl(o) {
     // The fragment (#...) carries enough to render the guest page before this
     // tablet has synced. Browsers never send fragments to the server.
     const snap = btoa(unescape(encodeURIComponent(JSON.stringify({ no: C.fmtNo(o.no), name: o.name, items: C.describeItems(o), booth: C.boothSettings(S.view) })))).replace(/=+$/, '');
-    return location.origin + '/o/' + o.token + '#' + snap;
+    return guestLink(o) + '#' + snap;
   }
 
   // ---- camera scanner for collection (BarcodeDetector, jsQR fallback)
@@ -923,6 +953,11 @@
     if (d.delmilk) { if (confirm('Delete this milk option?')) dispatch('menu.delete', { kind: 'milk', id: d.delmilk }); return; }
     switch (d.act) {
       case 'copyTracking': copyTrackingLink(); break;
+      case 'shareBoard': {
+        boardShareRequest = dispatch('board.share', { id: d.id });
+        renderBoardShareStatus();
+        break;
+      }
       case 'showTrackingQr': {
         clearTimeout(modalTimer);
         const qr = $('#trackingQr');

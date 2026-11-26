@@ -243,7 +243,7 @@ function publicOrder(o) {
     etaMs: Core.eta(state, o, t), booth, impact, now: t };
 }
 // Ops the server is willing to accept from a client of a given role.
-function validOp(op, role) {
+function validOp(op, role, now) {
   if (!op || typeof op.opId !== 'string' || op.opId.length > 64 || typeof op.type !== 'string') return false;
   if (!Core.ROLE_OPS[role].includes(op.type)) return false;
   if (typeof op.at !== 'number' || !isFinite(op.at)) return false;
@@ -262,6 +262,12 @@ function validOp(op, role) {
     }
     if ('donationName' in p && (typeof p.donationName !== 'string' || !p.donationName.trim() || p.donationName.length > 120)) return false;
     if ('goal' in p && (!Number.isSafeInteger(p.goal) || p.goal < 1)) return false;
+  }
+  if (op.type === 'board.share') {
+    const { id } = op.payload;
+    if (typeof id !== 'string' || !Object.hasOwn(state.orders, id) || !Core.boardShareOrder(state, now, { id, at: op.at })) return false;
+    op.payload = { id };
+    op.at = Math.min(op.at, now);
   }
   return true;
 }
@@ -293,7 +299,7 @@ const server = http.createServer(async (req, res) => {
       const now = Date.now();
       for (const op of (Array.isArray(body.ops) ? body.ops : []).slice(0, 2000)) {
         if (seen.has(op && op.opId)) { acked.push(op.opId); continue; }
-        if (!validOp(op, role)) { acked.push(op && op.opId); continue; } // drop invalid so the outbox can't jam
+        if (!validOp(op, role, now)) { acked.push(op && op.opId); continue; } // drop invalid so the outbox can't jam
         op.at = Math.min(op.at, now + 60000); // a fast device clock can't win LWW for ever
         const e = commit({ opId: op.opId, type: op.type, at: op.at, device: String(op.device || '').slice(0, 40), payload: op.payload });
         acked.push(op.opId);

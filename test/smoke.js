@@ -62,6 +62,28 @@ const op = (type, payload, at) => ({ opId: Math.random().toString(36).slice(2) +
     assert.strictEqual(g.body.impact.goal, 500000);
     assert.strictEqual((await j('/api/track/' + 'z'.repeat(20))).status, 404);
 
+    // Sharing is explicit, works across staff devices, and expires.
+    const syncOps = (ops, token, since = 0) => j('/api/sync', {
+      method: 'POST', body: JSON.stringify({ ops, since }),
+    }, token);
+    const shareAt = Date.now() - 1000;
+    const share = op('board.share', { id: 'o1' }, shareAt);
+    const newerShare = op('board.share', { id: 'o2' }, shareAt + 1);
+    assert.strictEqual(Core.boardShareOrder((await j('/api/state', {}, bar.token)).body.state, shareAt), null);
+    assert.strictEqual((await syncOps([share])).status, 401);
+    const atBeforeShare = (await j('/api/health')).body.seq;
+    await syncOps([newerShare, share, newerShare], bar.token);
+    const board = Core.emptyState();
+    const boardSync = (await syncOps([], lead.token, atBeforeShare)).body;
+    assert.strictEqual(boardSync.ops.length, 2, 'board shares are idempotent');
+    for (const entry of [o1, o2, ...boardSync.ops]) Core.apply(board, entry);
+    assert.strictEqual(Core.boardShareOrder(board, shareAt).id, 'o2', 'latest share wins');
+    assert.strictEqual(Core.boardShareOrder(board, board.boardShare.at + Core.BOARD_SHARE_MS), null);
+    const badShares = [op('board.share', { id: 'missing' }), op('board.share', { id: 'o1' }, shareAt - Core.BOARD_SHARE_MS - 1000)];
+    assert.strictEqual((await syncOps(badShares, bar.token, boardSync.seq)).body.ops.length, 0);
+    Core.apply(board, op('order.status', { id: 'o2', status: 'collected' }));
+    assert.strictEqual(Core.boardShareOrder(board, shareAt), null, 'pickup removes the QR');
+
     const setBooth = (payload, token) => j('/api/sync', {
       method: 'POST', body: JSON.stringify({ ops: [op('settings.update', payload)], since: 0 }),
     }, token);
