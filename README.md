@@ -73,7 +73,7 @@ This project replaces the paper:
 | 🔔 | Guests | **Ready notifications** are optional. Web Push can reach the lock screen, with Add to Home Screen guidance on iPhone and in-page sound as a fallback. |
 | 🥤 | Guests | Order number, status, and estimated wait. A pickup QR appears when the order is ready and pickup scanning is enabled. |
 | 📸 | Guests | **Shareable story card**: a 1080×1920 *"I sipped for Young Hearts"* image made on the phone for Instagram. |
-| 📺 | Booth | **Ready board** for the separate monitor with ready and making lists, optional donation progress, and sound controls. |
+| 📺 | Booth | **Ready board** with ready and making lists, optional donation progress, and sound controls. The tracking QR appears automatically for the latest order for up to 90 seconds. |
 | 🧠 | Lead | **Booth insights** in plain language: *"Oat milk runs out around 3:40 pm at this pace"*, *"Rush building: 25 cups in vs 5 out"*. |
 | 📊 | Lead | **Daily sales report** with KPIs, per-drink and per-hour breakdowns, CSV export per order, and **Close day** with a PDPA wipe. |
 | 📶 | Everyone | **Offline-first**: every tap is saved on the device first, then synced idempotently. Wifi drops never lose or duplicate an order. |

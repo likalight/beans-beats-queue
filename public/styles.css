@@ -288,8 +288,6 @@ td input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--ink); }
 .stage .making .row span { font-size: clamp(20px, min(3vw, 5.2vh), 70px); }
 .stage .ready-list:has(.row:nth-child(4)) .row b { font-size: clamp(39px, min(6vw, 9vh), 135px); }
 .stage .making:has(.row:nth-child(5)) .row b { font-size: clamp(28px, min(4.2vw, 6.6vh), 98px); }
-.stage .wait { margin-top: 1.5vh; display: flex; gap: .6em; align-items: center; font-size: clamp(15px, min(1.7vw, 3.2vh), 38px); line-height: 1.18; color: #b6b3b2; }
-.stage .wait b { color: #fff; }
 .stage .idle { max-width: 29ch; padding-top: clamp(12px, 5vh, 72px); font-size: clamp(21px, min(2.65vw, 4.6vh), 58px); line-height: 1.22; }
 .stage .more-count, .stage footer { font-size: clamp(14px, min(1.45vw, 2.6vh), 30px); }
 .stage .more-count { padding-top: 1vh; }

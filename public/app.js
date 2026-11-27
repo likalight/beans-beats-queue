@@ -457,7 +457,7 @@
     const status = $('#boardShareStatus');
     if (!status || !boardShareRequest) return;
     const pending = S.outbox.some((op) => op.opId === boardShareRequest.opId);
-    const active = S.base.boardShare?.opId === boardShareRequest.opId && C.boardShareOrder(S.base, now());
+    const active = boardTrackingShare()?.opId === boardShareRequest.opId && C.boardShareOrder(S.base, now());
     let msg = active ? 'QR sent to the Ready Board.' : 'QR unavailable on the board. Send it again if needed.';
     if (pending) msg = S.online && !S.simOffline ? 'Sending QR…' : 'Waiting for connection to send QR.';
     if (status.textContent !== msg) status.textContent = msg;
@@ -549,6 +549,7 @@
   // ---- board (public screen)
   let lastReady = new Set();
   let boardFirst = true;
+  let boardReadyHtml;
   let boardShareTimer;
   function chime() {
     try {
@@ -568,28 +569,42 @@
   function renderBoard() {
     const ready = orders().filter((o) => o.status === 'ready').sort((a, b) => b.statusAt - a.statusAt);
     const making = orders().filter((o) => o.status === 'making').sort((a, b) => a.statusAt - b.statusAt);
-    const queued = orders().filter((o) => o.status === 'queued');
     const imp = C.impact(S.view, now());
     const settings = C.boothSettings(S.view);
     if (!$app.querySelector('.stage')) {
+      boardFirst = true;
+      boardReadyHtml = undefined;
       $app.innerHTML = '<div class="board stage">' +
         '<header class="bhd"><div class="blogo"><img src="/brand/logo-white.png" alt="beans&amp;beats"><div><b>ready board</b><small>Christmas Together 2026</small></div></div>' +
         '<div class="meter" id="meter"></div><div id="net" role="status"></div></header>' +
         '<div class="cols"><section class="ready-list"><h2>Ready to collect</h2><div id="bReady"></div></section>' +
-        '<section class="making"><h2>Making</h2><div id="bMaking"></div><div class="wait" id="bWait"></div></section>' +
+        '<section class="making"><h2>Making</h2><div id="bMaking"></div></section>' +
         '<aside id="bTracking" class="board-tracking hidden" aria-label="Scan to track"></aside></div>' +
         '<footer><span id="boardPickup"></span>' +
         '<details class="stage-tools"><summary aria-label="Display controls">Display controls</summary><div class="stage-ctl"><button data-act="stageSound" id="vBtn" aria-pressed="false">' + ic('speaker-slash') + 'Sound</button><button data-act="stageFull">' + ic('corners-out') + 'Full screen</button><button data-go="queue">' + ic('x') + 'Exit</button></div></details></footer>' +
         '</div>';
     }
     const MAXR = 5, MAXM = 6;
-    $('#bReady').innerHTML = (ready.length ? ready.slice(0, MAXR).map(boardRow).join('') : '<div class="idle">Your number will appear here when your drink is ready.</div>') +
+    const visibleReady = ready.slice(0, MAXR);
+    const readyHtml = (ready.length ? visibleReady.map(boardRow).join('') : '<div class="idle">Your number will appear here when your drink is ready.</div>') +
       (ready.length > MAXR ? '<div class="more-count">+ ' + (ready.length - MAXR) + ' more at the counter</div>' : '');
+    const readyList = $('#bReady');
+    if (readyHtml !== boardReadyHtml) {
+      readyList.innerHTML = readyHtml;
+      boardReadyHtml = readyHtml;
+    }
+    const newlyReady = boardFirst ? [] : ready.filter((o) => !lastReady.has(o.id));
+    if (newlyReady.length && window.matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+      visibleReady.forEach((order, index) => {
+        if (newlyReady.includes(order)) {
+          readyList.children[index].animate(
+            [{ backgroundColor: '#433b33' }, { backgroundColor: 'transparent' }],
+            { duration: 650, easing: 'ease-out' });
+        }
+      });
+    }
     $('#bMaking').innerHTML = (making.length ? making.slice(0, MAXM).map((o) => boardRow(o)).join('') : '<div class="idle">Nothing on the bar</div>') +
       (making.length > MAXM ? '<div class="more-count">+ ' + (making.length - MAXM) + ' more</div>' : '');
-    const openCups = making.concat(queued).reduce((a, o) => a + C.orderCups(o), 0);
-    const waitMin = Math.max(1, Math.round(openCups * C.pace(S.view, now()) / 60000));
-    $('#bWait').innerHTML = queued.length || making.length ? ic('hourglass-medium') + '<span>' + queued.length + ' in line · about <b class="num">' + waitMin + ' min</b> for a new order</span>' : ic('lightning') + '<span>No wait right now. Order at the counter.</span>';
     $('#boardPickup').textContent = settings.pickupScan ? 'Show your pickup code at the counter.' : 'Give your order number at the counter.';
     $('#meter').hidden = !settings.showDonation;
     const pct = imp.goal > 0 ? Math.min(100, 100 * imp.total / imp.goal) : 0;
@@ -599,23 +614,32 @@
     const soundButton = $('#vBtn');
     soundButton.setAttribute('aria-pressed', String(Boolean(sound)));
     soundButton.innerHTML = ic(sound ? 'speaker-high' : 'speaker-slash') + 'Sound';
-    if (!boardFirst && sound) Stage.announce(ready.filter((o) => !lastReady.has(o.id)).reverse());
+    if (sound && newlyReady.length) Stage.announce(newlyReady.reverse());
     if (S.seq || S.lastOk) boardFirst = false; // baseline = first render with real data
     lastReady = new Set(ready.map((o) => o.id));
     renderBoardTracking();
     renderNet();
   }
 
+  function boardTrackingShare() {
+    const latest = Object.values(S.base.orders).reduce((recent, order) =>
+      !recent || order.createdAt > recent.createdAt ? order : recent, null);
+    const manual = S.base.boardShare;
+    return latest && (!manual || latest.createdAt > manual.at)
+      ? { id: latest.id, at: latest.createdAt } : manual;
+  }
+
   function renderBoardTracking() {
     clearTimeout(boardShareTimer);
     const card = $('#bTracking');
-    const order = window.qrcode && C.boardShareOrder?.(S.base, now());
+    const share = boardTrackingShare();
+    const order = window.qrcode && C.boardShareOrder?.(S.base, now(), share);
     card.classList.toggle('hidden', !order);
     card.parentElement.classList.toggle('with-tracking', !!order);
     if (!order) { card.replaceChildren(); return; }
     card.innerHTML = '<h2>Scan to track</h2><strong class="num">Order ' + C.fmtNo(order.no) + '</strong>' +
       '<div class="board-qr">' + qrSvg(guestLink(order), 16) + '</div>';
-    boardShareTimer = setTimeout(() => { if (route === 'board') renderBoardTracking(); }, S.base.boardShare.at + C.BOARD_SHARE_MS - now() + 10);
+    boardShareTimer = setTimeout(() => { if (route === 'board') renderBoardTracking(); }, share.at + C.BOARD_SHARE_MS - now() + 10);
   }
   setInterval(() => { if (S.token && (route === 'queue')) render(); }, 30000);
 
